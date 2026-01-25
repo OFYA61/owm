@@ -30,7 +30,7 @@ const OwmServer = struct {
     keyboards: wl.list.Head(OwmKeyboard, .link) = undefined,
     new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
     request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
-    request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionListener),
+    request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
 
     wlr_cursor: *wlr.Cursor,
     wlr_cursor_manager: *wlr.XcursorManager,
@@ -324,7 +324,7 @@ const OwmServer = struct {
     }
 
     /// Called when a client want to set the selection, e.g. copies something.
-    fn requestSetSelectionListener(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
+    fn requestSetSelectionCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
         const server: *OwmServer = @fieldParentPtr("request_set_selection_listener", listener);
         server.wlr_seat.setSelection(event.source, event.serial);
     }
@@ -606,7 +606,7 @@ const OwmKeyboard = struct {
 
     modifiers_listener: wl.Listener(*wlr.Keyboard) = .init(modifiersCallback),
     key_listener: wl.Listener(*wlr.Keyboard.event.Key) = .init(keyCallback),
-    destroy_listener: wl.Listener(*wlr.InputDevice) = .init(destroyCallbac),
+    destroy_listener: wl.Listener(*wlr.InputDevice) = .init(destroyCallback),
 
     fn create(server: *OwmServer, device: *wlr.InputDevice) !void {
         const keyboard = try gpa.create(OwmKeyboard);
@@ -660,7 +660,7 @@ const OwmKeyboard = struct {
         }
     }
 
-    fn destroyCallbac(listener: *wl.Listener(*wlr.InputDevice), _: *wlr.InputDevice) void {
+    fn destroyCallback(listener: *wl.Listener(*wlr.InputDevice), _: *wlr.InputDevice) void {
         const keyboard: *OwmKeyboard = @fieldParentPtr("destroy_listener", listener);
 
         keyboard.link.remove();
