@@ -48,16 +48,16 @@ const OwmServer = struct {
         const wl_server = try wl.Server.create();
 
         const event_loop = wl_server.getEventLoop();
-        const wlr_backend = try wlr.Backend.autocreate(event_loop, null);
-        const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend);
-        const wlr_output_layout = try wlr.OutputLayout.create(wl_server);
-        const wlr_scene = try wlr.Scene.create();
-        const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer);
+        const wlr_backend = try wlr.Backend.autocreate(event_loop, null); // Auto picks the backend (Wayland, X11, DRM+KSM)
+        const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend); // Auto picks a renderer (Pixman, GLES2, Vulkan)
+        const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
+        const wlr_scene = try wlr.Scene.create(); // Abstraction that handles all rendering and damage tracking
+        const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
         const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
-        const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3);
-        const wlr_seat = try wlr.Seat.create(wl_server, "seat0");
-        const wlr_cursor = try wlr.Cursor.create();
-        const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24);
+        const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3); // XDG protocol for app windows
+        const wlr_seat = try wlr.Seat.create(wl_server, "seat0"); // Input device seat
+        const wlr_cursor = try wlr.Cursor.create(); // Mouse
+        const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24); // Sources cursor images
 
         self.* = .{
             .wl_server = wl_server,
@@ -75,9 +75,9 @@ const OwmServer = struct {
 
         try self.wlr_renderer.initServer(wl_server);
 
-        _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer);
-        _ = try wlr.Subcompositor.create(self.wl_server);
-        _ = try wlr.DataDeviceManager.create(self.wl_server);
+        _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer); // Allows clients to allocate surfaces
+        _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
+        _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
 
         self.outputs.init();
         self.wlr_backend.events.new_output.add(&self.new_output_listener);
