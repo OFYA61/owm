@@ -180,6 +180,7 @@ const OwmServer = struct {
             const toplevel = self.grabbed_toplevel.?;
             toplevel.x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
             toplevel.y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
+            toplevel.wlr_scene_tree.node.setPosition(toplevel.x, toplevel.y);
         } else if (self.cursor_mode == .resize) {
             self.processCursorResize();
             return;
@@ -518,12 +519,13 @@ const OwmToplevel = struct {
         gpa.destroy(toplevel);
     }
 
-    fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), event: *wlr.XdgToplevel.event.Move) void {
-        _ = listener;
-        _ = event;
-        std.log.info("REQUESTING TO MOVE, LET ME MOVE", .{});
-        // TODO: implement
-        // const toplevel: *OwmToplevel = @fieldParentPtr("destroy_listener", listener);
+    fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("request_move_listener", listener);
+        const server = toplevel.owm_server;
+        server.grabbed_toplevel = toplevel;
+        server.cursor_mode = .move;
+        server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
+        server.grab_y = server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel.y));
     }
 
     fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
