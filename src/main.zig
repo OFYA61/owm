@@ -1,0 +1,548 @@
+const std = @import("std");
+const posix = std.posix;
+
+const wl = @import("wayland").server.wl;
+const wlr = @import("wlroots");
+const xkb = @import("xkbcommon");
+
+const gpa = std.heap.c_allocator;
+
+const OwmServer = struct {
+    wl_server: *wl.Server,
+    wlr_backend: *wlr.Backend,
+    wlr_renderer: *wlr.Renderer,
+    wlr_output_layout: *wlr.OutputLayout,
+    wlr_scene: *wlr.Scene,
+    wlr_allocator: *wlr.Allocator,
+    wlr_scene_output_layout: *wlr.SceneOutputLayout,
+    wlr_xdg_shell: *wlr.XdgShell,
+    wlr_seat: *wlr.Seat,
+    wlr_cursor: *wlr.Cursor,
+    wlr_cursor_manager: *wlr.XcursorManager,
+
+    toplevels: wl.list.Head(OwmToplevel, .link) = undefined,
+    new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
+    new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
+    new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
+
+    keyboards: wl.list.Head(OwmKeyboard, .link) = undefined,
+    new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
+    request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
+    request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionListener),
+
+    grabbed_toplevel: ?*OwmToplevel = null,
+    cursor_mode: enum { passthrough, move, resize } = .passthrough,
+    grab_x: f64 = 0,
+    grab_y: f64 = 0,
+    cursor_motion_listener: wl.Listener(*wlr.Pointer.event.Motion) = .init(cursorMotionCallback),
+    cursor_motion_absolute_listener: wl.Listener(*wlr.Pointer.event.MotionAbsolute) = .init(cursorMotionAbsoluteCallback),
+    cursor_button_listener: wl.Listener(*wlr.Pointer.event.Button) = .init(cursorButtonCallback),
+    cursor_axis_listener: wl.Listener(*wlr.Pointer.event.Axis) = .init(cursorAxisCallback),
+    cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
+
+    fn init(self: *OwmServer) anyerror!void {
+        const wl_server = try wl.Server.create();
+        const event_loop = wl_server.getEventLoop();
+        const wlr_backend = try wlr.Backend.autocreate(event_loop, null);
+        const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend);
+        const wlr_output_layout = try wlr.OutputLayout.create(wl_server);
+        const wlr_scene = try wlr.Scene.create();
+        const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer);
+        const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
+        const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3);
+        const wlr_seat = try wlr.Seat.create(wl_server, "seat0");
+        const wlr_cursor = try wlr.Cursor.create();
+        const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24);
+
+        self.* = .{
+            .wl_server = wl_server,
+            .wlr_backend = wlr_backend,
+            .wlr_renderer = wlr_renderer,
+            .wlr_allocator = wlr_allocator,
+            .wlr_scene = wlr_scene,
+            .wlr_output_layout = wlr_output_layout,
+            .wlr_scene_output_layout = wlr_scene_output_layout,
+            .wlr_xdg_shell = wlr_xdg_shell,
+            .wlr_seat = wlr_seat,
+            .wlr_cursor = wlr_cursor,
+            .wlr_cursor_manager = wlr_cursor_manager,
+        };
+
+        try self.wlr_renderer.initServer(wl_server);
+
+        _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer);
+        _ = try wlr.Subcompositor.create(self.wl_server);
+        _ = try wlr.DataDeviceManager.create(self.wl_server);
+
+        self.wlr_backend.events.new_output.add(&self.new_output_listener);
+
+        self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
+        self.wlr_xdg_shell.events.new_popup.add(&self.new_popup_listener);
+        self.toplevels.init();
+
+        self.wlr_backend.events.new_input.add(&self.new_input_listener);
+        self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
+        self.wlr_seat.events.request_set_selection.add(&self.request_set_selection_listener);
+        self.keyboards.init();
+
+        self.wlr_cursor.attachOutputLayout(self.wlr_output_layout);
+        try self.wlr_cursor_manager.load(1);
+        wlr_cursor.events.motion.add(&self.cursor_motion_listener);
+        wlr_cursor.events.motion_absolute.add(&self.cursor_motion_absolute_listener);
+        wlr_cursor.events.button.add(&self.cursor_button_listener);
+        wlr_cursor.events.axis.add(&self.cursor_axis_listener);
+        wlr_cursor.events.frame.add(&self.cursor_frame_listener);
+    }
+
+    fn deinit(self: *OwmServer) void {
+        self.wl_server.destroyClients();
+
+        self.new_input_listener.link.remove();
+        self.new_output_listener.link.remove();
+
+        self.new_toplevel_listener.link.remove();
+        self.new_popup_listener.link.remove();
+        self.request_set_cursor_listener.link.remove();
+        self.request_set_selection_listener.link.remove();
+        self.cursor_motion_listener.link.remove();
+        self.cursor_motion_absolute_listener.link.remove();
+        self.cursor_button_listener.link.remove();
+        self.cursor_axis_listener.link.remove();
+        self.cursor_frame_listener.link.remove();
+
+        self.wlr_backend.destroy();
+        self.wl_server.destroy();
+    }
+
+    const ViewAtResponse = struct {
+        sx: f64,
+        sy: f64,
+        wlr_surface: *wlr.Surface,
+        toplevel: *OwmToplevel,
+    };
+
+    fn viewAt(self: *OwmServer, lx: f64, ly: f64) ?ViewAtResponse {
+        var sx: f64 = undefined;
+        var sy: f64 = undefined;
+        if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
+            if (node.type != .buffer) return null;
+            const scene_buffer = wlr.SceneBuffer.fromNode(node);
+            const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return null;
+
+            var it: ?*wlr.SceneTree = node.parent;
+            while (it) |n| : (it = n.node.parent) {
+                if (@as(?*OwmToplevel, @ptrCast(@alignCast(n.node.data)))) |toplevel| {
+                    return ViewAtResponse{
+                        .sx = sx,
+                        .sy = sy,
+                        .wlr_surface = scene_surface.surface,
+                        .toplevel = toplevel,
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
+
+    fn processCursorMotion(self: *OwmServer, time: u32) void {
+        if (self.cursor_mode == .move) {
+            const toplevel = self.grabbed_toplevel.?;
+            toplevel.x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
+            toplevel.y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
+        } else if (self.cursor_mode == .resize) {
+            self.processCursorResize();
+            return;
+        }
+
+        if (self.viewAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
+            self.wlr_seat.pointerNotifyEnter(response.wlr_surface, response.sx, response.sy);
+            self.wlr_seat.pointerNotifyMotion(time, response.sx, response.sy);
+        } else {
+            self.wlr_cursor.setXcursor(self.wlr_cursor_manager, "default");
+            self.wlr_seat.pointerClearFocus();
+        }
+    }
+
+    fn processCursorResize(self: *OwmServer) void {
+        _ = self;
+        std.log.info("IMPLEMENT CURSOR RESIZE", .{});
+    }
+
+    fn resetCursorMode(self: *OwmServer) void {
+        self.cursor_mode = .passthrough;
+        self.grabbed_toplevel = null;
+    }
+
+    fn focusToplevel(self: *OwmServer, toplevel: *OwmToplevel, surface: *wlr.Surface) void {
+        // TODO: focus on the bloody view
+        _ = self;
+        _ = toplevel;
+        _ = surface;
+    }
+
+    /// Called when a new display is discovered
+    fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+        const server: *OwmServer = @fieldParentPtr("new_output_listener", listener);
+        if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
+            std.log.err("Failed to initialize render with allocator and renderer on new output", .{});
+            return;
+        }
+
+        var state = wlr.Output.State.init();
+        defer state.finish();
+        state.setEnabled(true);
+        if (wlr_output.preferredMode()) |mode| {
+            std.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
+            state.setMode(mode);
+        }
+        if (!wlr_output.commitState(&state)) {
+            std.log.err("Failed to commit state for new output", .{});
+            return;
+        }
+
+        OwmOutput.create(server, wlr_output) catch {
+            std.log.err("Failed to allocate new output", .{});
+            wlr_output.destroy();
+            return;
+        };
+    }
+
+    /// Called when a client creates a new toplevel (app window)
+    fn newXdgToplevelCallback(listener: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
+        const server: *OwmServer = @fieldParentPtr("new_toplevel_listener", listener);
+        OwmToplevel.create(server, wlr_xdg_toplevel) catch {
+            std.log.err("Failed to allocate new toplevel", .{});
+            wlr_xdg_toplevel.sendClose();
+            return;
+        };
+    }
+
+    /// Called when a client create a new popup
+    fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
+        OwmPopup.create(wlr_xdg_popup) catch {
+            std.log.err("Failed to allocate new popup", .{});
+            return;
+        };
+    }
+
+    /// Called when a new input device becomes available
+    fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr.InputDevice) void {
+        const server: *OwmServer = @fieldParentPtr("new_input_listener", listener);
+        server.wlr_seat.setCapabilities(.{
+            .pointer = true,
+            .keyboard = false,
+        });
+        switch (input_device.type) {
+            .pointer => {
+                server.wlr_cursor.attachInputDevice(input_device);
+            },
+            .keyboard => {
+                std.log.info("IMPLEMENT KEYBOARDS", .{});
+            },
+            else => {},
+        }
+    }
+
+    /// Called when a client provides a cursor image
+    fn requestSetCursorCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetCursor), event: *wlr.Seat.event.RequestSetCursor) void {
+        const server: *OwmServer = @fieldParentPtr("request_set_cursor_listener", listener);
+        if (server.wlr_seat.pointer_state.focused_client) |client| {
+            if (client == event.seat_client) { // Make sure the requesting client is focused
+                server.wlr_cursor.setSurface(event.surface, event.hotspot_x, event.hotspot_y);
+            }
+        }
+    }
+
+    /// Called when a client want to set the selection, e.g. copies something.
+    fn requestSetSelectionListener(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
+        const server: *OwmServer = @fieldParentPtr("request_set_selection_listener", listener);
+        server.wlr_seat.setSelection(event.source, event.serial);
+    }
+
+    /// Called when pointer emits relative (_delta_) motion events
+    fn cursorMotionCallback(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
+        const server: *OwmServer = @fieldParentPtr("cursor_motion_listener", listener);
+        server.wlr_cursor.move(event.device, event.delta_x, event.delta_y);
+        server.processCursorMotion(event.time_msec);
+    }
+
+    /// Called when pointer emits an absolute motion event, e.g. on Wayland or X11 backend, pointer enters the window
+    fn cursorMotionAbsoluteCallback(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
+        const server: *OwmServer = @fieldParentPtr("cursor_motion_absolute_listener", listener);
+        server.wlr_cursor.warpAbsolute(event.device, event.x, event.y);
+        server.processCursorMotion(event.time_msec);
+    }
+
+    fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
+        const server: *OwmServer = @fieldParentPtr("cursor_button_listener", listener);
+        _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
+        if (event.state == .released) {
+            server.resetCursorMode();
+        } else {
+            if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
+                server.focusToplevel(result.toplevel, result.wlr_surface);
+            }
+        }
+    }
+
+    fn cursorAxisCallback(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
+        const server: *OwmServer = @fieldParentPtr("cursor_axis_listener", listener);
+        server.wlr_seat.pointerNotifyAxis(
+            event.time_msec,
+            event.orientation,
+            event.delta,
+            event.delta_discrete,
+            event.source,
+            event.relative_direction,
+        );
+    }
+
+    /// Frame events are sent after regular pointer events to group multiple events together.
+    /// E.g. 2 axis events may hapen at the same time, in which case a farme event won't be sent in between
+    fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
+        const server: *OwmServer = @fieldParentPtr("cursor_frame_listener", listener);
+        server.wlr_seat.pointerNotifyFrame();
+    }
+};
+
+const OwmOutput = struct {
+    owm_server: *OwmServer,
+    wlr_output: *wlr.Output,
+    link: wl.list.Link = undefined,
+
+    frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
+    request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
+    destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
+
+    fn create(server: *OwmServer, wlr_output: *wlr.Output) anyerror!void {
+        const owm_output = try gpa.create(OwmOutput);
+        // errdefer gpa.destroy(owm_output);
+
+        owm_output.* = .{
+            .owm_server = server,
+            .wlr_output = wlr_output,
+        };
+
+        wlr_output.events.frame.add(&owm_output.frame_listener);
+        wlr_output.events.request_state.add(&owm_output.request_state_listener);
+        wlr_output.events.destroy.add(&owm_output.destroy_listener);
+
+        // server.outputs.append(owm_output);
+
+        // Add the new display to the right of all the other displays
+        const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
+        const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
+        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+    }
+
+    /// Called every time when an output is ready to display a farme, generally at the refresh rate
+    fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+        const output: *OwmOutput = @fieldParentPtr("frame_listener", listener);
+        const scene_output = output.owm_server.wlr_scene.getSceneOutput(wlr_output).?;
+        // Render the scene if needed and commit the output
+        _ = scene_output.commit(null);
+
+        var now = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch @panic("CLOCK_MONOTONIC not supported");
+        scene_output.sendFrameDone(&now);
+    }
+
+    /// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
+    fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
+        const output: *OwmOutput = @fieldParentPtr("request_state_listener", listener);
+        _ = output.wlr_output.commitState(event.state);
+    }
+
+    fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
+        const output: *OwmOutput = @fieldParentPtr("destroy_listener", listener);
+
+        output.frame_listener.link.remove();
+        output.request_state_listener.link.remove();
+        output.destroy_listener.link.remove();
+        output.link.remove();
+
+        gpa.destroy(output);
+    }
+};
+
+const OwmToplevel = struct {
+    owm_server: *OwmServer,
+    wlr_xdg_toplevel: *wlr.XdgToplevel,
+    wlr_scene_tree: *wlr.SceneTree,
+    link: wl.list.Link = undefined,
+
+    x: i32 = 0,
+    y: i32 = 0,
+
+    map_listener: wl.Listener(void) = .init(mapCallback),
+    unmap_listener: wl.Listener(void) = .init(unmapCallback),
+    commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
+    destroy_listener: wl.Listener(void) = .init(destroyCallback),
+    request_move_listener: wl.Listener(*wlr.XdgToplevel.event.Move) = .init(requestMoveCallback),
+    request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requestResizeCallback),
+    request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
+    request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
+
+    fn create(server: *OwmServer, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
+        const toplevel = try gpa.create(OwmToplevel);
+        errdefer gpa.destroy(toplevel);
+        toplevel.* = .{
+            .owm_server = server,
+            .wlr_xdg_toplevel = wlr_xdg_toplevel,
+            .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
+        };
+
+        toplevel.wlr_scene_tree.node.data = toplevel;
+        wlr_xdg_toplevel.base.data = toplevel.wlr_scene_tree;
+
+        wlr_xdg_toplevel.base.surface.events.map.add(&toplevel.map_listener);
+        wlr_xdg_toplevel.base.surface.events.unmap.add(&toplevel.unmap_listener);
+        wlr_xdg_toplevel.base.surface.events.commit.add(&toplevel.commit_listener);
+        wlr_xdg_toplevel.events.destroy.add(&toplevel.destroy_listener);
+        wlr_xdg_toplevel.events.request_move.add(&toplevel.request_move_listener);
+        wlr_xdg_toplevel.events.request_resize.add(&toplevel.request_resize_listener);
+        wlr_xdg_toplevel.events.request_maximize.add(&toplevel.request_maximize_listener);
+        wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
+    }
+
+    /// Called when teh surface is mapped, or ready to display on screen
+    fn mapCallback(listener: *wl.Listener(void)) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("map_listener", listener);
+        toplevel.owm_server.toplevels.append(toplevel);
+        toplevel.owm_server.focusToplevel(toplevel, toplevel.wlr_xdg_toplevel.base.surface);
+    }
+
+    /// Called when the surface should no longer be shown
+    fn unmapCallback(listener: *wl.Listener(void)) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("unmap_listener", listener);
+        if (toplevel.owm_server.grabbed_toplevel == toplevel) {
+            toplevel.owm_server.resetCursorMode();
+        }
+
+        toplevel.link.remove();
+    }
+
+    /// Called when the surface state is committed
+    fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("commit_listener", listener);
+        if (toplevel.wlr_xdg_toplevel.base.initial_commit) {
+            // When an xdg_surface performs an initial commit, the compositor must
+            // reply with a configure so the client can map the surface.
+            // Configuring the xdg_toplevel with 0,0 size to lets the client pick the
+            // dimensions itself.
+            _ = toplevel.wlr_xdg_toplevel.setSize(0, 0);
+        }
+    }
+
+    fn destroyCallback(listener: *wl.Listener(void)) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("destroy_listener", listener);
+
+        toplevel.map_listener.link.remove();
+        toplevel.unmap_listener.link.remove();
+        toplevel.commit_listener.link.remove();
+        toplevel.destroy_listener.link.remove();
+        toplevel.request_move_listener.link.remove();
+        toplevel.request_resize_listener.link.remove();
+        toplevel.request_maximize_listener.link.remove();
+        toplevel.request_fullscreen_listener.link.remove();
+
+        gpa.destroy(toplevel);
+    }
+
+    fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), event: *wlr.XdgToplevel.event.Move) void {
+        _ = listener;
+        _ = event;
+        std.log.info("REQUESTING TO MOVE, LET ME MOVE", .{});
+        // TODO: implement
+        // const toplevel: *OwmToplevel = @fieldParentPtr("destroy_listener", listener);
+    }
+
+    fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
+        _ = listener;
+        _ = event;
+        std.log.info("REQUESTING TO RESIZE, LET ME REZISE", .{});
+        // TODO: implement
+    }
+
+    fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("request_maximize_listener", listener);
+        if (toplevel.wlr_xdg_toplevel.base.initialized) {
+            _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
+        }
+    }
+
+    fn requestFullscreenCallback(listener: *wl.Listener(void)) void {
+        const toplevel: *OwmToplevel = @fieldParentPtr("request_fullscreen_listener", listener);
+        if (toplevel.wlr_xdg_toplevel.base.initialized) {
+            _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
+        }
+    }
+};
+
+const OwmPopup = struct {
+    wlr_xdg_popup: *wlr.XdgPopup,
+    link: wl.list.Link = undefined,
+
+    commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
+    destroy_listener: wl.Listener(void) = .init(destroyCallback),
+
+    fn create(wlr_xdg_popup: *wlr.XdgPopup) anyerror!void {
+        const xdg_surface = wlr_xdg_popup.base;
+        // Add to the scene graph so that it gets rendered.
+        const parent = wlr.XdgSurface.tryFromWlrSurface(wlr_xdg_popup.parent.?) orelse return;
+        const parent_tree = @as(?*wlr.SceneTree, @ptrCast(@alignCast(parent.data))) orelse {
+            return;
+        };
+        const scene_tree = parent_tree.createSceneXdgSurface(xdg_surface) catch {
+            std.log.err("failed to allocate xdg popup node", .{});
+            return;
+        };
+        xdg_surface.data = scene_tree;
+
+        const popup = try gpa.create(OwmPopup);
+        errdefer gpa.destroy(popup);
+
+        popup.* = .{
+            .wlr_xdg_popup = wlr_xdg_popup,
+        };
+
+        xdg_surface.surface.events.commit.add(&popup.commit_listener);
+        wlr_xdg_popup.events.destroy.add(&popup.destroy_listener);
+    }
+
+    /// Called when a new surface state is commited
+    fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
+        const popup: *OwmPopup = @fieldParentPtr("commit_listener", listener);
+        if (popup.wlr_xdg_popup.base.initial_commit) {
+            _ = popup.wlr_xdg_popup.base.scheduleConfigure();
+        }
+    }
+
+    fn destroyCallback(listener: *wl.Listener(void)) void {
+        const popup: *OwmPopup = @fieldParentPtr("destroy_listener", listener);
+
+        popup.commit_listener.link.remove();
+        popup.destroy_listener.link.remove();
+
+        gpa.destroy(popup);
+    }
+};
+
+const OwmKeyboard = struct {
+    link: wl.list.Link = undefined,
+};
+
+pub fn main() anyerror!void {
+    wlr.log.init(.debug, null);
+
+    var server: OwmServer = undefined;
+    try server.init();
+    defer server.deinit();
+
+    var buf: [11]u8 = undefined;
+    const socket = try server.wl_server.addSocketAuto(&buf);
+
+    try server.wlr_backend.start();
+    std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{socket});
+    server.wl_server.run();
+}
