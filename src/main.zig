@@ -9,27 +9,31 @@ const gpa = std.heap.c_allocator;
 
 const OwmServer = struct {
     wl_server: *wl.Server,
+    wl_socket: ?[:0]const u8 = null,
+
+    wlr_scene: *wlr.Scene,
+    wlr_scene_output_layout: *wlr.SceneOutputLayout,
+
     wlr_backend: *wlr.Backend,
+    wlr_allocator: *wlr.Allocator,
     wlr_renderer: *wlr.Renderer,
     wlr_output_layout: *wlr.OutputLayout,
-    wlr_scene: *wlr.Scene,
-    wlr_allocator: *wlr.Allocator,
-    wlr_scene_output_layout: *wlr.SceneOutputLayout,
-    wlr_xdg_shell: *wlr.XdgShell,
-    wlr_seat: *wlr.Seat,
-    wlr_cursor: *wlr.Cursor,
-    wlr_cursor_manager: *wlr.XcursorManager,
+    outputs: wl.list.Head(OwmOutput, .link) = undefined,
 
+    wlr_xdg_shell: *wlr.XdgShell,
     toplevels: wl.list.Head(OwmToplevel, .link) = undefined,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
     new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
+    wlr_seat: *wlr.Seat,
     keyboards: wl.list.Head(OwmKeyboard, .link) = undefined,
     new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
     request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
     request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionListener),
 
+    wlr_cursor: *wlr.Cursor,
+    wlr_cursor_manager: *wlr.XcursorManager,
     grabbed_toplevel: ?*OwmToplevel = null,
     cursor_mode: enum { passthrough, move, resize } = .passthrough,
     grab_x: f64 = 0,
@@ -42,6 +46,7 @@ const OwmServer = struct {
 
     fn init(self: *OwmServer) anyerror!void {
         const wl_server = try wl.Server.create();
+
         const event_loop = wl_server.getEventLoop();
         const wlr_backend = try wlr.Backend.autocreate(event_loop, null);
         const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend);
@@ -74,6 +79,7 @@ const OwmServer = struct {
         _ = try wlr.Subcompositor.create(self.wl_server);
         _ = try wlr.DataDeviceManager.create(self.wl_server);
 
+        self.outputs.init();
         self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
         self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
@@ -112,6 +118,30 @@ const OwmServer = struct {
 
         self.wlr_backend.destroy();
         self.wl_server.destroy();
+    }
+
+    fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
+        self.wl_socket = socket;
+    }
+
+    fn run(self: *OwmServer) anyerror!void {
+        try self.wlr_backend.start();
+        std.log.info("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
+        self.wl_server.run();
+    }
+
+    fn spawnChild(self: *OwmServer, command: [:0]const u8) anyerror!void {
+        var child = std.process.Child.init(
+            &[_][]const u8{ "/bin/sh", "-c", command },
+            gpa,
+        );
+
+        var env_map = try std.process.getEnvMap(gpa);
+        defer env_map.deinit();
+        try env_map.put("WAYLAND_DISPLAY", self.wl_socket.?);
+        child.env_map = &env_map;
+
+        try child.spawn();
     }
 
     const ViewAtResponse = struct {
@@ -175,10 +205,44 @@ const OwmServer = struct {
     }
 
     fn focusToplevel(self: *OwmServer, toplevel: *OwmToplevel, surface: *wlr.Surface) void {
-        // TODO: focus on the bloody view
-        _ = self;
-        _ = toplevel;
-        _ = surface;
+        if (self.wlr_seat.keyboard_state.focused_surface) |prev_surface| {
+            if (prev_surface == surface) return;
+            if (wlr.XdgSurface.tryFromWlrSurface(prev_surface)) |xdg_surface| {
+                _ = xdg_surface.role_data.toplevel.?.setActivated(false);
+            }
+        }
+
+        // Move new toplevel to the top
+        toplevel.wlr_scene_tree.node.raiseToTop();
+        toplevel.link.remove();
+        self.toplevels.prepend(toplevel);
+
+        _ = toplevel.wlr_xdg_toplevel.setActivated(true);
+
+        const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
+        self.wlr_seat.keyboardNotifyEnter(
+            surface,
+            wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
+            &wlr_keyboard.modifiers,
+        );
+    }
+
+    fn handleKeybind(self: *OwmServer, key: xkb.Keysym) bool {
+        switch (@intFromEnum(key)) {
+            xkb.Keysym.Escape => self.wl_server.terminate(),
+            xkb.Keysym.t => {
+                self.spawnChild("cosmic-term") catch {
+                    std.log.err("Failed to spawn cosmic-term", .{});
+                };
+            },
+            xkb.Keysym.f => {
+                self.spawnChild("cosmic-files") catch {
+                    std.log.err("failed to spawn cosmic-files", .{});
+                };
+            },
+            else => return false,
+        }
+        return true;
     }
 
     /// Called when a new display is discovered
@@ -231,14 +295,18 @@ const OwmServer = struct {
         const server: *OwmServer = @fieldParentPtr("new_input_listener", listener);
         server.wlr_seat.setCapabilities(.{
             .pointer = true,
-            .keyboard = false,
+            .keyboard = true,
         });
+
         switch (input_device.type) {
             .pointer => {
                 server.wlr_cursor.attachInputDevice(input_device);
             },
             .keyboard => {
-                std.log.info("IMPLEMENT KEYBOARDS", .{});
+                OwmKeyboard.create(server, input_device) catch |err| {
+                    std.log.err("Failed to allocate keyboard: {}", .{err});
+                    return;
+                };
             },
             else => {},
         }
@@ -334,6 +402,7 @@ const OwmOutput = struct {
         const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
         const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
         server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+        server.outputs.append(owm_output);
     }
 
     /// Called every time when an output is ready to display a farme, generally at the refresh rate
@@ -408,7 +477,7 @@ const OwmToplevel = struct {
     /// Called when teh surface is mapped, or ready to display on screen
     fn mapCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("map_listener", listener);
-        toplevel.owm_server.toplevels.append(toplevel);
+        toplevel.owm_server.toplevels.prepend(toplevel);
         toplevel.owm_server.focusToplevel(toplevel, toplevel.wlr_xdg_toplevel.base.surface);
     }
 
@@ -529,20 +598,88 @@ const OwmPopup = struct {
 };
 
 const OwmKeyboard = struct {
+    owm_server: *OwmServer,
+    wlr_device: *wlr.InputDevice,
     link: wl.list.Link = undefined,
+
+    modifiers_listener: wl.Listener(*wlr.Keyboard) = .init(modifiersCallback),
+    key_listener: wl.Listener(*wlr.Keyboard.event.Key) = .init(keyCallback),
+    destroy_listener: wl.Listener(*wlr.InputDevice) = .init(destroyCallbac),
+
+    fn create(server: *OwmServer, device: *wlr.InputDevice) !void {
+        const keyboard = try gpa.create(OwmKeyboard);
+        errdefer gpa.destroy(keyboard);
+
+        keyboard.* = .{ .owm_server = server, .wlr_device = device };
+
+        const context = xkb.Context.new(.no_flags) orelse return error.ContextFailed;
+        defer context.unref();
+        const keymap = xkb.Keymap.newFromNames(context, null, .no_flags) orelse return error.KeymapFailed;
+        defer keymap.unref();
+
+        const wlr_keyboard = device.toKeyboard();
+        if (!wlr_keyboard.setKeymap(keymap)) return error.SetKeymapFailed;
+        wlr_keyboard.setRepeatInfo(25, 300);
+
+        wlr_keyboard.events.modifiers.add(&keyboard.modifiers_listener);
+        wlr_keyboard.events.key.add(&keyboard.key_listener);
+        device.events.destroy.add(&keyboard.destroy_listener);
+
+        server.wlr_seat.setKeyboard(wlr_keyboard);
+        server.keyboards.append(keyboard);
+    }
+
+    fn modifiersCallback(listener: *wl.Listener(*wlr.Keyboard), wlr_keyboard: *wlr.Keyboard) void {
+        const keyboard: *OwmKeyboard = @fieldParentPtr("modifiers_listener", listener);
+        keyboard.owm_server.wlr_seat.setKeyboard(wlr_keyboard);
+        keyboard.owm_server.wlr_seat.keyboardNotifyModifiers(&wlr_keyboard.modifiers);
+    }
+
+    fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
+        const keyboard: *OwmKeyboard = @fieldParentPtr("key_listener", listener);
+        const wlr_keyboard = keyboard.wlr_device.toKeyboard();
+
+        // Translate libinput keycode to xkbcommon
+        const keycode = event.keycode + 8;
+
+        var handled = false;
+        if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
+            for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
+                if (keyboard.owm_server.handleKeybind(sym)) {
+                    handled = true;
+                    break;
+                }
+            }
+        }
+
+        if (!handled) {
+            keyboard.owm_server.wlr_seat.setKeyboard(wlr_keyboard);
+            keyboard.owm_server.wlr_seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+        }
+    }
+
+    fn destroyCallbac(listener: *wl.Listener(*wlr.InputDevice), _: *wlr.InputDevice) void {
+        const keyboard: *OwmKeyboard = @fieldParentPtr("destroy_listener", listener);
+
+        keyboard.link.remove();
+        keyboard.modifiers_listener.link.remove();
+        keyboard.key_listener.link.remove();
+        keyboard.destroy_listener.link.remove();
+
+        gpa.destroy(keyboard);
+    }
 };
 
 pub fn main() anyerror!void {
-    wlr.log.init(.debug, null);
+    wlr.log.init(.info, null);
 
     var server: OwmServer = undefined;
     try server.init();
     defer server.deinit();
 
     var buf: [11]u8 = undefined;
-    const socket = try server.wl_server.addSocketAuto(&buf);
+    const wl_socket = try server.wl_server.addSocketAuto(&buf);
+    server.setSocket(wl_socket); // Setting the socket in `init` causes odd behaviour that I'm unable to understand, it uses a random value on `runProcess`
 
-    try server.wlr_backend.start();
-    std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{socket});
-    server.wl_server.run();
+    try server.run();
 }
