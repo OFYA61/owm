@@ -520,6 +520,8 @@ const OwmOutput = struct {
     }
 };
 
+const TOPLEVEL_SPAWN_SIZE_X = 640;
+const TOPLEVEL_SPAWN_SIZE_Y = 360;
 const OwmToplevel = struct {
     owm_server: *OwmServer,
     wlr_xdg_toplevel: *wlr.XdgToplevel,
@@ -568,6 +570,13 @@ const OwmToplevel = struct {
         wlr_xdg_toplevel.events.request_resize.add(&toplevel.request_resize_listener);
         wlr_xdg_toplevel.events.request_maximize.add(&toplevel.request_maximize_listener);
         wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
+
+        const geom = output.?.getGeom();
+        const spawn_x = geom.x + @divExact(geom.width, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_X, 2);
+        const spawn_y = geom.y + @divExact(geom.height, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_Y, 2);
+        toplevel.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
+        toplevel.x = spawn_x;
+        toplevel.y = spawn_y;
     }
 
     /// Called when the surface is mapped, or ready to display on screen
@@ -595,7 +604,7 @@ const OwmToplevel = struct {
             // reply with a configure so the client can map the surface.
             // Configuring the xdg_toplevel with 0,0 size to lets the client pick the
             // dimensions itself.
-            _ = toplevel.wlr_xdg_toplevel.setSize(0, 0);
+            _ = toplevel.wlr_xdg_toplevel.setSize(TOPLEVEL_SPAWN_SIZE_X, TOPLEVEL_SPAWN_SIZE_Y);
         }
     }
 
