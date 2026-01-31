@@ -21,7 +21,7 @@ const OwmServer = struct {
     wlr_allocator: *wlr.Allocator,
     wlr_renderer: *wlr.Renderer,
     wlr_output_layout: *wlr.OutputLayout,
-    outputs: wl.list.Head(OwmOutput, .link) = undefined,
+    outputs: std.ArrayList(*OwmOutput) = .empty,
 
     wlr_xdg_shell: *wlr.XdgShell,
     toplevels: wl.list.Head(OwmToplevel, .link) = undefined,
@@ -84,7 +84,6 @@ const OwmServer = struct {
         _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
         _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
 
-        self.outputs.init();
         self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
         self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
@@ -123,6 +122,8 @@ const OwmServer = struct {
 
         self.wlr_backend.destroy();
         self.wl_server.destroy();
+
+        self.outputs.deinit(gpa);
     }
 
     fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
@@ -147,6 +148,20 @@ const OwmServer = struct {
         child.env_map = &env_map;
 
         try child.spawn();
+    }
+
+    fn outputAt(self: *OwmServer, lx: f64, ly: f64) ?*OwmOutput {
+        for (self.outputs.items) |output| {
+            const geom = output.getGeom();
+            const x = @as(f64, @floatFromInt(geom.x));
+            const y = @as(f64, @floatFromInt(geom.y));
+            const width = @as(f64, @floatFromInt(geom.width));
+            const height = @as(f64, @floatFromInt(geom.height));
+            if (x <= lx and lx < x + width and y <= ly and ly < y + height) {
+                return output;
+            }
+        }
+        return null;
     }
 
     const ViewAtResponse = struct {
@@ -423,7 +438,7 @@ const OwmOutput = struct {
     id: usize,
     owm_server: *OwmServer,
     wlr_output: *wlr.Output,
-    link: wl.list.Link = undefined,
+    geom: wlr.Box,
 
     frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
     request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
@@ -433,31 +448,35 @@ const OwmOutput = struct {
         const owm_output = try gpa.create(OwmOutput);
         errdefer gpa.destroy(owm_output);
 
+        // Add the new display to the right of all the other displays
+        const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
+        const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
+        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+
+        const geom = wlr.Box{
+            .x = layout_output.x,
+            .y = layout_output.y,
+            .width = wlr_output.width,
+            .height = wlr_output.height,
+        };
+
         OUTPUT_COUNTER += 1;
         owm_output.* = .{
+            .id = OUTPUT_COUNTER,
             .owm_server = server,
             .wlr_output = wlr_output,
-            .id = OUTPUT_COUNTER,
+            .geom = geom,
         };
 
         wlr_output.events.frame.add(&owm_output.frame_listener);
         wlr_output.events.request_state.add(&owm_output.request_state_listener);
         wlr_output.events.destroy.add(&owm_output.destroy_listener);
 
-        // Add the new display to the right of all the other displays
-        const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
-        const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
-        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
-        server.outputs.append(owm_output);
+        try server.outputs.append(gpa, owm_output);
     }
 
-    fn get_box(self: *OwmOutput) wlr.Box {
-        return wlr.Box{
-            .x = 0,
-            .y = 0,
-            .width = self.wlr_output.width,
-            .height = self.wlr_output.height,
-        };
+    fn getGeom(self: *OwmOutput) wlr.Box {
+        return self.geom;
     }
 
     /// Called every time when an output is ready to display a farme, generally at the refresh rate
@@ -483,8 +502,15 @@ const OwmOutput = struct {
         output.frame_listener.link.remove();
         output.request_state_listener.link.remove();
         output.destroy_listener.link.remove();
-        output.link.remove();
 
+        var index: usize = undefined;
+        for (output.owm_server.outputs.items, 0..) |o, idx| {
+            if (o.id == output.id) {
+                index = idx;
+                break;
+            }
+        }
+        _ = output.owm_server.outputs.orderedRemove(index);
         gpa.destroy(output);
     }
 };
@@ -512,11 +538,17 @@ const OwmToplevel = struct {
     fn create(server: *OwmServer, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
         const toplevel = try gpa.create(OwmToplevel);
         errdefer gpa.destroy(toplevel);
+
+        const output = server.outputAt(server.wlr_cursor.x, server.wlr_cursor.y);
+        if (output == null) {
+            return error.CursorNotOnAnyOutput;
+        }
+
         toplevel.* = .{
             .owm_server = server,
             .wlr_xdg_toplevel = wlr_xdg_toplevel,
             .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
-            .current_output = 0, // TODO: Discover on which display the window is manually
+            .current_output = output.?.id,
             .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
         };
 
@@ -613,26 +645,27 @@ const OwmToplevel = struct {
         }
 
         if (toplevel.wlr_xdg_toplevel.current.maximized) {
-            std.log.info("Unmaximizing before: {}", .{toplevel.box_before_maximize});
             const box = toplevel.box_before_maximize;
-
             toplevel.x = box.x;
             toplevel.y = box.y;
-
             toplevel.wlr_scene_tree.node.setPosition(box.x, box.y);
             _ = toplevel.wlr_xdg_toplevel.setSize(box.width, box.height);
             _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
         } else {
-            const output = toplevel.owm_server.outputs.first(); // TODO: find out the output the window belongs to
-            const box = output.?.get_box();
+            var located_output: *OwmOutput = undefined;
+            for (toplevel.owm_server.outputs.items) |output| {
+                if (output.id == toplevel.current_output) {
+                    located_output = output;
+                    break;
+                }
+            }
+            const box = located_output.getGeom();
             toplevel.box_before_maximize = .{
                 .x = toplevel.x,
                 .y = toplevel.y,
                 .width = toplevel.wlr_xdg_toplevel.current.width,
                 .height = toplevel.wlr_xdg_toplevel.current.height,
             };
-
-            std.log.info("Maximizing before: {}", .{toplevel.box_before_maximize});
 
             toplevel.x = box.x;
             toplevel.y = box.y;
