@@ -222,7 +222,11 @@ const OwmServer = struct {
             }
 
             const box = toplevel.wlr_xdg_toplevel.base.geometry;
-            toplevel.wlr_scene_tree.node.setPosition(new_left - box.x, new_top - box.y);
+            const new_x = new_left - box.x;
+            const new_y = new_top - box.y;
+            toplevel.x = new_x;
+            toplevel.y = new_y;
+            toplevel.wlr_scene_tree.node.setPosition(new_x, new_y);
 
             const new_width: i32 = new_right - new_left;
             const new_height: i32 = new_bottom - new_top;
@@ -562,9 +566,9 @@ const OwmToplevel = struct {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_move_listener", listener);
         const server = toplevel.owm_server;
         server.grabbed_toplevel = toplevel;
+        server.cursor_mode = .move;
         server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
         server.grab_y = server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel.y));
-        server.cursor_mode = .move;
     }
 
     fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
