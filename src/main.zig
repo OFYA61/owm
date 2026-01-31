@@ -405,6 +405,11 @@ const OwmServer = struct {
         const server: *OwmServer = @fieldParentPtr("cursor_button_listener", listener);
         _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
         if (event.state == .released) {
+            if (server.grabbed_toplevel) |toplevel| {
+                if (server.outputAt(server.wlr_cursor.x, server.wlr_cursor.y)) |output| {
+                    toplevel.current_output_id = output.id;
+                }
+            }
             server.resetCursorMode();
         } else {
             if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
@@ -523,7 +528,7 @@ const OwmToplevel = struct {
 
     x: i32 = 0,
     y: i32 = 0,
-    current_output: usize,
+    current_output_id: usize,
     box_before_maximize: wlr.Box,
 
     map_listener: wl.Listener(void) = .init(mapCallback),
@@ -548,7 +553,7 @@ const OwmToplevel = struct {
             .owm_server = server,
             .wlr_xdg_toplevel = wlr_xdg_toplevel,
             .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
-            .current_output = output.?.id,
+            .current_output_id = output.?.id,
             .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
         };
 
@@ -654,7 +659,7 @@ const OwmToplevel = struct {
         } else {
             var located_output: *OwmOutput = undefined;
             for (toplevel.owm_server.outputs.items) |output| {
-                if (output.id == toplevel.current_output) {
+                if (output.id == toplevel.current_output_id) {
                     located_output = output;
                     break;
                 }
