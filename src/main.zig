@@ -7,6 +7,9 @@ const xkb = @import("xkbcommon");
 
 const gpa = std.heap.c_allocator;
 
+const MIN_TOPLEVEL_WIDTH = 240;
+const MIN_TOPLEVEL_HEIGHT = 135;
+
 const OwmServer = struct {
     wl_server: *wl.Server,
     wl_socket: ?[:0]const u8 = null,
@@ -38,6 +41,8 @@ const OwmServer = struct {
     cursor_mode: enum { passthrough, move, resize } = .passthrough,
     grab_x: f64 = 0,
     grab_y: f64 = 0,
+    grab_box: wlr.Box = undefined,
+    resize_edges: wlr.Edges = .{},
     cursor_motion_listener: wl.Listener(*wlr.Pointer.event.Motion) = .init(cursorMotionCallback),
     cursor_motion_absolute_listener: wl.Listener(*wlr.Pointer.event.MotionAbsolute) = .init(cursorMotionAbsoluteCallback),
     cursor_button_listener: wl.Listener(*wlr.Pointer.event.Button) = .init(cursorButtonCallback),
@@ -181,8 +186,47 @@ const OwmServer = struct {
             toplevel.x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
             toplevel.y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
             toplevel.wlr_scene_tree.node.setPosition(toplevel.x, toplevel.y);
+            return;
         } else if (self.cursor_mode == .resize) {
-            self.processCursorResize();
+            const toplevel = self.grabbed_toplevel.?;
+            const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
+            const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
+
+            var new_left = self.grab_box.x;
+            var new_right = self.grab_box.x + self.grab_box.width;
+            var new_top = self.grab_box.y;
+            var new_bottom = self.grab_box.y + self.grab_box.height;
+
+            if (self.resize_edges.top) {
+                new_top = border_y;
+                if (new_top + MIN_TOPLEVEL_HEIGHT >= new_bottom) { // Make sure new_top isn't below new_bottom
+                    new_top = new_bottom - MIN_TOPLEVEL_HEIGHT;
+                }
+            } else if (self.resize_edges.bottom) {
+                new_bottom = border_y;
+                if (new_bottom - MIN_TOPLEVEL_HEIGHT <= new_top) { // Make sure new_bottom isn't above new_top
+                    new_bottom = new_top + MIN_TOPLEVEL_HEIGHT;
+                }
+            }
+
+            if (self.resize_edges.left) {
+                new_left = border_x;
+                if (new_left + MIN_TOPLEVEL_WIDTH >= new_right) { // Make sure new_left isn't right of new_right
+                    new_left = new_right - MIN_TOPLEVEL_WIDTH;
+                }
+            } else if (self.resize_edges.right) {
+                new_right = border_x;
+                if (new_right - MIN_TOPLEVEL_WIDTH <= new_left) { // Make sure new_right isn't left of new_left
+                    new_right = new_left + MIN_TOPLEVEL_WIDTH;
+                }
+            }
+
+            const box = toplevel.wlr_xdg_toplevel.base.geometry;
+            toplevel.wlr_scene_tree.node.setPosition(new_left - box.x, new_top - box.y);
+
+            const new_width: i32 = new_right - new_left;
+            const new_height: i32 = new_bottom - new_top;
+            _ = toplevel.wlr_xdg_toplevel.setSize(new_width, new_height);
             return;
         }
 
@@ -193,11 +237,6 @@ const OwmServer = struct {
             self.wlr_cursor.setXcursor(self.wlr_cursor_manager, "default");
             self.wlr_seat.pointerClearFocus();
         }
-    }
-
-    fn processCursorResize(self: *OwmServer) void {
-        _ = self;
-        std.log.info("IMPLEMENT CURSOR RESIZE", .{});
     }
 
     fn resetCursorMode(self: *OwmServer) void {
@@ -523,16 +562,29 @@ const OwmToplevel = struct {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_move_listener", listener);
         const server = toplevel.owm_server;
         server.grabbed_toplevel = toplevel;
-        server.cursor_mode = .move;
         server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
         server.grab_y = server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel.y));
+        server.cursor_mode = .move;
     }
 
     fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
-        _ = listener;
-        _ = event;
-        std.log.info("REQUESTING TO RESIZE, LET ME REZISE", .{});
-        // TODO: implement
+        const toplevel: *OwmToplevel = @fieldParentPtr("request_resize_listener", listener);
+        const server = toplevel.owm_server;
+
+        server.grabbed_toplevel = toplevel;
+        server.cursor_mode = .resize;
+        server.resize_edges = event.edges;
+
+        const box = toplevel.wlr_xdg_toplevel.base.geometry;
+
+        const border_x = toplevel.x + box.x + if (event.edges.right) box.width else 0;
+        const border_y = toplevel.y + box.y + if (event.edges.bottom) box.height else 0;
+        server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
+        server.grab_y = server.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
+
+        server.grab_box = box;
+        server.grab_box.x += toplevel.x;
+        server.grab_box.y += toplevel.y;
     }
 
     fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
