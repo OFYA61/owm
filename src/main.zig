@@ -418,7 +418,9 @@ const OwmServer = struct {
     }
 };
 
+var OUTPUT_COUNTER: usize = 0;
 const OwmOutput = struct {
+    id: usize,
     owm_server: *OwmServer,
     wlr_output: *wlr.Output,
     link: wl.list.Link = undefined,
@@ -429,24 +431,33 @@ const OwmOutput = struct {
 
     fn create(server: *OwmServer, wlr_output: *wlr.Output) anyerror!void {
         const owm_output = try gpa.create(OwmOutput);
-        // errdefer gpa.destroy(owm_output);
+        errdefer gpa.destroy(owm_output);
 
+        OUTPUT_COUNTER += 1;
         owm_output.* = .{
             .owm_server = server,
             .wlr_output = wlr_output,
+            .id = OUTPUT_COUNTER,
         };
 
         wlr_output.events.frame.add(&owm_output.frame_listener);
         wlr_output.events.request_state.add(&owm_output.request_state_listener);
         wlr_output.events.destroy.add(&owm_output.destroy_listener);
 
-        // server.outputs.append(owm_output);
-
         // Add the new display to the right of all the other displays
         const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
         const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
         server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
         server.outputs.append(owm_output);
+    }
+
+    fn get_box(self: *OwmOutput) wlr.Box {
+        return wlr.Box{
+            .x = 0,
+            .y = 0,
+            .width = self.wlr_output.width,
+            .height = self.wlr_output.height,
+        };
     }
 
     /// Called every time when an output is ready to display a farme, generally at the refresh rate
@@ -486,6 +497,8 @@ const OwmToplevel = struct {
 
     x: i32 = 0,
     y: i32 = 0,
+    current_output: usize,
+    box_before_maximize: wlr.Box,
 
     map_listener: wl.Listener(void) = .init(mapCallback),
     unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -503,6 +516,8 @@ const OwmToplevel = struct {
             .owm_server = server,
             .wlr_xdg_toplevel = wlr_xdg_toplevel,
             .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
+            .current_output = 0, // TODO: Discover on which display the window is manually
+            .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
         };
 
         toplevel.wlr_scene_tree.node.data = toplevel;
@@ -518,7 +533,7 @@ const OwmToplevel = struct {
         wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
     }
 
-    /// Called when teh surface is mapped, or ready to display on screen
+    /// Called when the surface is mapped, or ready to display on screen
     fn mapCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("map_listener", listener);
         toplevel.owm_server.toplevels.prepend(toplevel);
@@ -593,16 +608,49 @@ const OwmToplevel = struct {
 
     fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_maximize_listener", listener);
-        if (toplevel.wlr_xdg_toplevel.base.initialized) {
-            _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
+        if (!toplevel.wlr_xdg_toplevel.base.initialized) {
+            return;
         }
+
+        if (toplevel.wlr_xdg_toplevel.current.maximized) {
+            std.log.info("Unmaximizing before: {}", .{toplevel.box_before_maximize});
+            const box = toplevel.box_before_maximize;
+
+            toplevel.x = box.x;
+            toplevel.y = box.y;
+
+            toplevel.wlr_scene_tree.node.setPosition(box.x, box.y);
+            _ = toplevel.wlr_xdg_toplevel.setSize(box.width, box.height);
+            _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
+        } else {
+            const output = toplevel.owm_server.outputs.first(); // TODO: find out the output the window belongs to
+            const box = output.?.get_box();
+            toplevel.box_before_maximize = .{
+                .x = toplevel.x,
+                .y = toplevel.y,
+                .width = toplevel.wlr_xdg_toplevel.current.width,
+                .height = toplevel.wlr_xdg_toplevel.current.height,
+            };
+
+            std.log.info("Maximizing before: {}", .{toplevel.box_before_maximize});
+
+            toplevel.x = box.x;
+            toplevel.y = box.y;
+
+            toplevel.wlr_scene_tree.node.setPosition(box.x, box.y);
+            _ = toplevel.wlr_xdg_toplevel.setSize(box.width, box.height);
+            _ = toplevel.wlr_xdg_toplevel.setMaximized(true);
+        }
+
+        _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
     }
 
     fn requestFullscreenCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_fullscreen_listener", listener);
-        if (toplevel.wlr_xdg_toplevel.base.initialized) {
-            _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
+        if (!toplevel.wlr_xdg_toplevel.base.initialized) {
+            return;
         }
+        _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
     }
 };
 
