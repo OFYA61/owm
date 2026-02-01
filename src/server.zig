@@ -23,8 +23,7 @@ pub const OwmServer = struct {
     outputs: std.ArrayList(*owm.Output) = .empty,
 
     wlr_xdg_shell: *wlr.XdgShell,
-    _keyboards: std.ArrayList(*owm.Keyboard) = .empty,
-    toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
+    _toplevels: std.ArrayList(*owm.Toplevel) = .empty,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
     new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
@@ -89,7 +88,6 @@ pub const OwmServer = struct {
 
         self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
         self.wlr_xdg_shell.events.new_popup.add(&self.new_popup_listener);
-        self.toplevels.init();
 
         self.wlr_backend.events.new_input.add(&self.new_input_listener);
         self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
@@ -124,7 +122,6 @@ pub const OwmServer = struct {
         self.wl_server.destroy();
 
         self.outputs.deinit(owm.allocator);
-        self._keyboards.deinit(owm.allocator);
     }
 
     pub fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
@@ -163,12 +160,7 @@ pub const OwmServer = struct {
             }
         }
 
-        // Move new toplevel to the top
-        toplevel.wlr_scene_tree.node.raiseToTop();
-        toplevel.link.remove();
-        self.toplevels.prepend(toplevel);
-
-        _ = toplevel.wlr_xdg_toplevel.setActivated(true);
+        toplevel.setFocus(true);
 
         const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
         self.wlr_seat.keyboardNotifyEnter(
@@ -245,9 +237,10 @@ pub const OwmServer = struct {
     fn processCursorMotion(self: *OwmServer, time: u32) void {
         if (self.cursor_mode == .move) {
             const toplevel = self.grabbed_toplevel.?;
-            toplevel.x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
-            toplevel.y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
-            toplevel.wlr_scene_tree.node.setPosition(toplevel.x, toplevel.y);
+            toplevel.setPos(
+                @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
+                @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
+            );
             return;
         } else if (self.cursor_mode == .resize) {
             const toplevel = self.grabbed_toplevel.?;
@@ -283,16 +276,14 @@ pub const OwmServer = struct {
                 }
             }
 
-            const box = toplevel.wlr_xdg_toplevel.base.geometry;
+            const box = toplevel.getGeom();
             const new_x = new_left - box.x;
             const new_y = new_top - box.y;
-            toplevel.x = new_x;
-            toplevel.y = new_y;
-            toplevel.wlr_scene_tree.node.setPosition(new_x, new_y);
+            toplevel.setPos(new_x, new_y);
 
             const new_width: i32 = new_right - new_left;
             const new_height: i32 = new_bottom - new_top;
-            _ = toplevel.wlr_xdg_toplevel.setSize(new_width, new_height);
+            toplevel.setSize(new_width, new_height);
             return;
         }
 
@@ -363,13 +354,8 @@ pub const OwmServer = struct {
                 server.wlr_cursor.attachInputDevice(input_device);
             },
             .keyboard => {
-                const keyboard = owm.Keyboard.create(server, input_device) catch |err| {
+                _ = owm.Keyboard.create(server, input_device) catch |err| {
                     std.log.err("Failed to allocate keyboard: {}", .{err});
-                    return;
-                };
-                server._keyboards.append(owm.allocator, keyboard) catch |err| {
-                    std.log.err("Failed to add keybaord to the array of keyboards: {}", .{err});
-                    keyboard.deinit();
                     return;
                 };
             },
