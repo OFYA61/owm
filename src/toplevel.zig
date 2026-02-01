@@ -144,6 +144,14 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
     const toplevel: *Toplevel = @fieldParentPtr("_request_move_listener", listener);
+    if (toplevel._wlr_xdg_toplevel.current.maximized) {
+        // TODO: make it focused and dragging at this stage
+        // TODO: make it positioned so that the cursor is holding it from the middle
+        const box = toplevel._box_before_maximize;
+        toplevel.setSize(box.width, box.height);
+        _ = toplevel._wlr_xdg_toplevel.setMaximized(false);
+        return;
+    }
     const server = toplevel._server;
     server.grabbed_toplevel = toplevel;
     server.cursor_mode = .move;
@@ -153,6 +161,7 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Toplevel = @fieldParentPtr("_request_resize_listener", listener);
+
     const server = toplevel._server;
 
     server.grabbed_toplevel = toplevel;
@@ -179,10 +188,8 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
 
     if (toplevel._wlr_xdg_toplevel.current.maximized) {
         const box = toplevel._box_before_maximize;
-        toplevel._x = box.x;
-        toplevel._y = box.y;
-        toplevel._wlr_scene_tree.node.setPosition(box.x, box.y);
-        _ = toplevel._wlr_xdg_toplevel.setSize(box.width, box.height);
+        toplevel.setPos(box.x, box.y);
+        toplevel.setSize(box.width, box.height);
         _ = toplevel._wlr_xdg_toplevel.setMaximized(false);
     } else {
         var located_output: *owm.Output = undefined;

@@ -23,7 +23,6 @@ pub const Server = struct {
     outputs: std.ArrayList(*owm.Output) = .empty,
 
     wlr_xdg_shell: *wlr.XdgShell,
-    _toplevels: std.ArrayList(*owm.Toplevel) = .empty,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
     new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
