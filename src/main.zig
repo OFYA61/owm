@@ -1,12 +1,8 @@
 const std = @import("std");
 
-const wlr = @import("wlroots");
-
 const owm = @import("owm.zig");
 
 pub fn main() anyerror!void {
-    wlr.log.init(.info, null);
-
     var server: owm.Server = undefined;
     try server.init();
     defer server.deinit();

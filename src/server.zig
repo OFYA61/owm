@@ -23,13 +23,13 @@ pub const OwmServer = struct {
     outputs: std.ArrayList(*owm.Output) = .empty,
 
     wlr_xdg_shell: *wlr.XdgShell,
+    _keyboards: std.ArrayList(*owm.Keyboard) = .empty,
     toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
     new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
     wlr_seat: *wlr.Seat,
-    keyboards: wl.list.Head(owm.Keyboard, .link) = undefined,
     new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
     request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
     request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
@@ -49,6 +49,8 @@ pub const OwmServer = struct {
     cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
 
     pub fn init(self: *OwmServer) anyerror!void {
+        wlr.log.init(.info, null);
+
         const wl_server = try wl.Server.create();
 
         const event_loop = wl_server.getEventLoop();
@@ -92,7 +94,6 @@ pub const OwmServer = struct {
         self.wlr_backend.events.new_input.add(&self.new_input_listener);
         self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
         self.wlr_seat.events.request_set_selection.add(&self.request_set_selection_listener);
-        self.keyboards.init();
 
         self.wlr_cursor.attachOutputLayout(self.wlr_output_layout);
         try self.wlr_cursor_manager.load(1);
@@ -123,6 +124,7 @@ pub const OwmServer = struct {
         self.wl_server.destroy();
 
         self.outputs.deinit(owm.allocator);
+        self._keyboards.deinit(owm.allocator);
     }
 
     pub fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
@@ -361,8 +363,13 @@ pub const OwmServer = struct {
                 server.wlr_cursor.attachInputDevice(input_device);
             },
             .keyboard => {
-                owm.Keyboard.create(server, input_device) catch |err| {
+                const keyboard = owm.Keyboard.create(server, input_device) catch |err| {
                     std.log.err("Failed to allocate keyboard: {}", .{err});
+                    return;
+                };
+                server._keyboards.append(owm.allocator, keyboard) catch |err| {
+                    std.log.err("Failed to add keybaord to the array of keyboards: {}", .{err});
+                    keyboard.deinit();
                     return;
                 };
             },
