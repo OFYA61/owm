@@ -6,18 +6,28 @@ const wlr = @import("wlroots");
 const owm = @import("owm.zig");
 
 var OUTPUT_COUNTER: usize = 0;
-pub const OwmOutput = struct {
+
+/// Represents a display output in the Wayland compositor.
+/// Manages output geometry, frame callbacks, state requests, and destruction events.
+pub const Output = struct {
+    /// Unique identifier for this output
     id: usize,
-    server: *owm.Server,
-    wlr_output: *wlr.Output,
+    /// Reference to the server instance that owns this output
+    _server: *owm.Server,
+    /// Reference to the wlroots output object
+    _wlr_output: *wlr.Output,
+    /// Geometric properties of the output (position and size)
     geom: wlr.Box,
 
-    frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
-    request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
-    destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
+    /// Listener for frame events when output is ready to display a frame
+    _frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
+    /// Listener for requests to change output state (e.g., mode changes)
+    _request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
+    /// Listener for output destruction events
+    _destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
     pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
-        const owm_output = try owm.allocator.create(OwmOutput);
+        const owm_output = try owm.allocator.create(Output);
         errdefer owm.allocator.destroy(owm_output);
 
         // Add the new display to the right of all the other displays
@@ -35,54 +45,54 @@ pub const OwmOutput = struct {
         OUTPUT_COUNTER += 1;
         owm_output.* = .{
             .id = OUTPUT_COUNTER,
-            .server = server,
-            .wlr_output = wlr_output,
+            ._server = server,
+            ._wlr_output = wlr_output,
             .geom = geom,
         };
 
-        wlr_output.events.frame.add(&owm_output.frame_listener);
-        wlr_output.events.request_state.add(&owm_output.request_state_listener);
-        wlr_output.events.destroy.add(&owm_output.destroy_listener);
+        wlr_output.events.frame.add(&owm_output._frame_listener);
+        wlr_output.events.request_state.add(&owm_output._request_state_listener);
+        wlr_output.events.destroy.add(&owm_output._destroy_listener);
 
         try server.outputs.append(owm.allocator, owm_output);
     }
 
-    pub fn getGeom(self: *OwmOutput) wlr.Box {
+    pub fn getGeom(self: *Output) wlr.Box {
         return self.geom;
     }
-
-    /// Called every time when an output is ready to display a farme, generally at the refresh rate
-    fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-        const output: *OwmOutput = @fieldParentPtr("frame_listener", listener);
-        const scene_output = output.server.wlr_scene.getSceneOutput(wlr_output).?;
-        // Render the scene if needed and commit the output
-        _ = scene_output.commit(null);
-
-        var now = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch @panic("CLOCK_MONOTONIC not supported");
-        scene_output.sendFrameDone(&now);
-    }
-
-    /// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
-    fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
-        const output: *OwmOutput = @fieldParentPtr("request_state_listener", listener);
-        _ = output.wlr_output.commitState(event.state);
-    }
-
-    fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
-        const output: *OwmOutput = @fieldParentPtr("destroy_listener", listener);
-
-        output.frame_listener.link.remove();
-        output.request_state_listener.link.remove();
-        output.destroy_listener.link.remove();
-
-        var index: usize = undefined;
-        for (output.server.outputs.items, 0..) |o, idx| {
-            if (o.id == output.id) {
-                index = idx;
-                break;
-            }
-        }
-        _ = output.server.outputs.orderedRemove(index);
-        owm.allocator.destroy(output);
-    }
 };
+
+/// Called every time when an output is ready to display a farme, generally at the refresh rate
+fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+    const output: *Output = @fieldParentPtr("_frame_listener", listener);
+    const scene_output = output._server.wlr_scene.getSceneOutput(wlr_output).?;
+    // Render the scene if needed and commit the output
+    _ = scene_output.commit(null);
+
+    var now = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch @panic("CLOCK_MONOTONIC not supported");
+    scene_output.sendFrameDone(&now);
+}
+
+/// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
+fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
+    const output: *Output = @fieldParentPtr("_request_state_listener", listener);
+    _ = output._wlr_output.commitState(event.state);
+}
+
+fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
+    const output: *Output = @fieldParentPtr("_destroy_listener", listener);
+
+    output._frame_listener.link.remove();
+    output._request_state_listener.link.remove();
+    output._destroy_listener.link.remove();
+
+    var index: usize = undefined;
+    for (output._server.outputs.items, 0..) |o, idx| {
+        if (o.id == output.id) {
+            index = idx;
+            break;
+        }
+    }
+    _ = output._server.outputs.orderedRemove(index);
+    owm.allocator.destroy(output);
+}

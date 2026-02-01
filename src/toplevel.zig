@@ -55,7 +55,7 @@ pub const OwmToplevel = struct {
         wlr_xdg_toplevel.events.request_maximize.add(&toplevel.request_maximize_listener);
         wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
 
-        const geom = output.?.getGeom();
+        const geom = output.?.geom;
         const spawn_x = geom.x + @divExact(geom.width, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_X, 2);
         const spawn_y = geom.y + @divExact(geom.height, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_Y, 2);
         toplevel.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
@@ -157,7 +157,7 @@ pub const OwmToplevel = struct {
                     break;
                 }
             }
-            const box = located_output.getGeom();
+            const box = located_output.geom;
             toplevel.box_before_maximize = .{
                 .x = toplevel.x,
                 .y = toplevel.y,

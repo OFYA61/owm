@@ -194,7 +194,7 @@ pub const OwmServer = struct {
 
     pub fn outputAt(self: *OwmServer, lx: f64, ly: f64) ?*owm.Output {
         for (self.outputs.items) |output| {
-            const geom = output.getGeom();
+            const geom = output.geom;
             const x = @as(f64, @floatFromInt(geom.x));
             const y = @as(f64, @floatFromInt(geom.y));
             const width = @as(f64, @floatFromInt(geom.width));
