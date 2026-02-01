@@ -6,23 +6,40 @@ const owm = @import("owm.zig");
 const TOPLEVEL_SPAWN_SIZE_X = 640;
 const TOPLEVEL_SPAWN_SIZE_Y = 360;
 
+/// Represents a toplevel window in the Wayland compositor.
+/// Manages window geometry, input events, and XDG tiling functionality.
 pub const Toplevel = struct {
+    /// Reference to the server instance that owns this toplevel
     _server: *owm.Server,
+    /// Reference to the wlroots XDG toplevel object
     _wlr_xdg_toplevel: *wlr.XdgToplevel,
+    /// Reference to the wlroots scene tree for rendering
     _wlr_scene_tree: *wlr.SceneTree,
 
+    /// X coordinate of the toplevel window
     _x: i32 = 0,
+    /// Y coordinate of the toplevel window
     _y: i32 = 0,
+    /// ID of the output this toplevel is currently on
     current_output_id: usize,
+    /// Original geometry before maximizing
     _box_before_maximize: wlr.Box,
 
+    /// Listener for surface mapping events
     _map_listener: wl.Listener(void) = .init(mapCallback),
+    /// Listener for surface unmapping events
     _unmap_listener: wl.Listener(void) = .init(unmapCallback),
+    /// Listener for surface commit events
     _commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
+    /// Listener for toplevel destruction events
     _destroy_listener: wl.Listener(void) = .init(destroyCallback),
+    /// Listener for move request events
     _request_move_listener: wl.Listener(*wlr.XdgToplevel.event.Move) = .init(requestMoveCallback),
+    /// Listener for resize request events
     _request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requestResizeCallback),
+    /// Listener for maximize request events
     _request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
+    /// Listener for fullscreen request events
     _request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
     pub fn create(server: *owm.Server, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {

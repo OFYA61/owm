@@ -9,7 +9,7 @@ const owm = @import("owm.zig");
 const MIN_TOPLEVEL_WIDTH = 240;
 const MIN_TOPLEVEL_HEIGHT = 135;
 
-pub const OwmServer = struct {
+pub const Server = struct {
     wl_server: *wl.Server,
     wl_socket: ?[:0]const u8 = null,
 
@@ -47,7 +47,7 @@ pub const OwmServer = struct {
     cursor_axis_listener: wl.Listener(*wlr.Pointer.event.Axis) = .init(cursorAxisCallback),
     cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
 
-    pub fn init(self: *OwmServer) anyerror!void {
+    pub fn init(self: *Server) anyerror!void {
         wlr.log.init(.info, null);
 
         const wl_server = try wl.Server.create();
@@ -102,7 +102,7 @@ pub const OwmServer = struct {
         wlr_cursor.events.frame.add(&self.cursor_frame_listener);
     }
 
-    pub fn deinit(self: *OwmServer) void {
+    pub fn deinit(self: *Server) void {
         self.wl_server.destroyClients();
 
         self.new_input_listener.link.remove();
@@ -124,17 +124,17 @@ pub const OwmServer = struct {
         self.outputs.deinit(owm.allocator);
     }
 
-    pub fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
+    pub fn setSocket(self: *Server, socket: [:0]const u8) void {
         self.wl_socket = socket;
     }
 
-    pub fn run(self: *OwmServer) anyerror!void {
+    pub fn run(self: *Server) anyerror!void {
         try self.wlr_backend.start();
         std.log.info("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
         self.wl_server.run();
     }
 
-    pub fn handleKeybind(self: *OwmServer, key: xkb.Keysym) bool {
+    pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
         switch (@intFromEnum(key)) {
             xkb.Keysym.Escape => self.wl_server.terminate(),
             xkb.Keysym.t => {
@@ -152,7 +152,7 @@ pub const OwmServer = struct {
         return true;
     }
 
-    pub fn focusToplevel(self: *OwmServer, toplevel: *owm.Toplevel, surface: *wlr.Surface) void {
+    pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel, surface: *wlr.Surface) void {
         if (self.wlr_seat.keyboard_state.focused_surface) |prev_surface| {
             if (prev_surface == surface) return;
             if (wlr.XdgSurface.tryFromWlrSurface(prev_surface)) |xdg_surface| {
@@ -170,7 +170,7 @@ pub const OwmServer = struct {
         );
     }
 
-    fn spawnChild(self: *OwmServer, command: [:0]const u8) anyerror!void {
+    fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
         var child = std.process.Child.init(
             &[_][]const u8{ "/bin/sh", "-c", command },
             owm.allocator,
@@ -184,7 +184,7 @@ pub const OwmServer = struct {
         try child.spawn();
     }
 
-    pub fn outputAt(self: *OwmServer, lx: f64, ly: f64) ?*owm.Output {
+    pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
         for (self.outputs.items) |output| {
             const geom = output.geom;
             const x = @as(f64, @floatFromInt(geom.x));
@@ -198,7 +198,7 @@ pub const OwmServer = struct {
         return null;
     }
 
-    pub fn resetCursorMode(self: *OwmServer) void {
+    pub fn resetCursorMode(self: *Server) void {
         self.cursor_mode = .passthrough;
         self.grabbed_toplevel = null;
     }
@@ -210,7 +210,7 @@ pub const OwmServer = struct {
         toplevel: *owm.Toplevel,
     };
 
-    fn viewAt(self: *OwmServer, lx: f64, ly: f64) ?ViewAtResponse {
+    fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
         var sx: f64 = undefined;
         var sy: f64 = undefined;
         if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
@@ -234,7 +234,7 @@ pub const OwmServer = struct {
         return null;
     }
 
-    fn processCursorMotion(self: *OwmServer, time: u32) void {
+    fn processCursorMotion(self: *Server, time: u32) void {
         if (self.cursor_mode == .move) {
             const toplevel = self.grabbed_toplevel.?;
             toplevel.setPos(
@@ -298,7 +298,7 @@ pub const OwmServer = struct {
 
     /// Called when a new display is discovered
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-        const server: *OwmServer = @fieldParentPtr("new_output_listener", listener);
+        const server: *Server = @fieldParentPtr("new_output_listener", listener);
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
             std.log.err("Failed to initialize render with allocator and renderer on new output", .{});
             return;
@@ -325,7 +325,7 @@ pub const OwmServer = struct {
 
     /// Called when a client creates a new toplevel (app window)
     fn newXdgToplevelCallback(listener: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-        const server: *OwmServer = @fieldParentPtr("new_toplevel_listener", listener);
+        const server: *Server = @fieldParentPtr("new_toplevel_listener", listener);
         owm.Toplevel.create(server, wlr_xdg_toplevel) catch {
             std.log.err("Failed to allocate new toplevel", .{});
             wlr_xdg_toplevel.sendClose();
@@ -343,7 +343,7 @@ pub const OwmServer = struct {
 
     /// Called when a new input device becomes available
     fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr.InputDevice) void {
-        const server: *OwmServer = @fieldParentPtr("new_input_listener", listener);
+        const server: *Server = @fieldParentPtr("new_input_listener", listener);
         server.wlr_seat.setCapabilities(.{
             .pointer = true,
             .keyboard = true,
@@ -365,7 +365,7 @@ pub const OwmServer = struct {
 
     /// Called when a client provides a cursor image
     fn requestSetCursorCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetCursor), event: *wlr.Seat.event.RequestSetCursor) void {
-        const server: *OwmServer = @fieldParentPtr("request_set_cursor_listener", listener);
+        const server: *Server = @fieldParentPtr("request_set_cursor_listener", listener);
         if (server.wlr_seat.pointer_state.focused_client) |client| {
             if (client == event.seat_client) { // Make sure the requesting client is focused
                 server.wlr_cursor.setSurface(event.surface, event.hotspot_x, event.hotspot_y);
@@ -375,26 +375,26 @@ pub const OwmServer = struct {
 
     /// Called when a client want to set the selection, e.g. copies something.
     fn requestSetSelectionCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
-        const server: *OwmServer = @fieldParentPtr("request_set_selection_listener", listener);
+        const server: *Server = @fieldParentPtr("request_set_selection_listener", listener);
         server.wlr_seat.setSelection(event.source, event.serial);
     }
 
     /// Called when pointer emits relative (_delta_) motion events
     fn cursorMotionCallback(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
-        const server: *OwmServer = @fieldParentPtr("cursor_motion_listener", listener);
+        const server: *Server = @fieldParentPtr("cursor_motion_listener", listener);
         server.wlr_cursor.move(event.device, event.delta_x, event.delta_y);
         server.processCursorMotion(event.time_msec);
     }
 
     /// Called when pointer emits an absolute motion event, e.g. on Wayland or X11 backend, pointer enters the window
     fn cursorMotionAbsoluteCallback(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
-        const server: *OwmServer = @fieldParentPtr("cursor_motion_absolute_listener", listener);
+        const server: *Server = @fieldParentPtr("cursor_motion_absolute_listener", listener);
         server.wlr_cursor.warpAbsolute(event.device, event.x, event.y);
         server.processCursorMotion(event.time_msec);
     }
 
     fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
-        const server: *OwmServer = @fieldParentPtr("cursor_button_listener", listener);
+        const server: *Server = @fieldParentPtr("cursor_button_listener", listener);
         _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
         if (event.state == .released) {
             if (server.grabbed_toplevel) |toplevel| {
@@ -411,7 +411,7 @@ pub const OwmServer = struct {
     }
 
     fn cursorAxisCallback(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
-        const server: *OwmServer = @fieldParentPtr("cursor_axis_listener", listener);
+        const server: *Server = @fieldParentPtr("cursor_axis_listener", listener);
         server.wlr_seat.pointerNotifyAxis(
             event.time_msec,
             event.orientation,
@@ -425,7 +425,7 @@ pub const OwmServer = struct {
     /// Frame events are sent after regular pointer events to group multiple events together.
     /// E.g. 2 axis events may hapen at the same time, in which case a farme event won't be sent in between
     fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
-        const server: *OwmServer = @fieldParentPtr("cursor_frame_listener", listener);
+        const server: *Server = @fieldParentPtr("cursor_frame_listener", listener);
         server.wlr_seat.pointerNotifyFrame();
     }
 };
