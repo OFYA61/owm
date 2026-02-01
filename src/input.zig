@@ -2,11 +2,10 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
-const gpa = @import("utils.zig").gpa;
-const OwmServer = @import("server.zig").OwmServer;
+const owm = @import("owm.zig");
 
 pub const OwmKeyboard = struct {
-    owm_server: *OwmServer,
+    server: *owm.Server,
     wlr_device: *wlr.InputDevice,
     link: wl.list.Link = undefined,
 
@@ -14,11 +13,11 @@ pub const OwmKeyboard = struct {
     key_listener: wl.Listener(*wlr.Keyboard.event.Key) = .init(keyCallback),
     destroy_listener: wl.Listener(*wlr.InputDevice) = .init(destroyCallback),
 
-    pub fn create(server: *OwmServer, device: *wlr.InputDevice) !void {
-        const keyboard = try gpa.create(OwmKeyboard);
-        errdefer gpa.destroy(keyboard);
+    pub fn create(server: *owm.Server, device: *wlr.InputDevice) !void {
+        const keyboard = try owm.allocator.create(OwmKeyboard);
+        errdefer owm.allocator.destroy(keyboard);
 
-        keyboard.* = .{ .owm_server = server, .wlr_device = device };
+        keyboard.* = .{ .server = server, .wlr_device = device };
 
         const context = xkb.Context.new(.no_flags) orelse return error.ContextFailed;
         defer context.unref();
@@ -39,8 +38,8 @@ pub const OwmKeyboard = struct {
 
     fn modifiersCallback(listener: *wl.Listener(*wlr.Keyboard), wlr_keyboard: *wlr.Keyboard) void {
         const keyboard: *OwmKeyboard = @fieldParentPtr("modifiers_listener", listener);
-        keyboard.owm_server.wlr_seat.setKeyboard(wlr_keyboard);
-        keyboard.owm_server.wlr_seat.keyboardNotifyModifiers(&wlr_keyboard.modifiers);
+        keyboard.server.wlr_seat.setKeyboard(wlr_keyboard);
+        keyboard.server.wlr_seat.keyboardNotifyModifiers(&wlr_keyboard.modifiers);
     }
 
     fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
@@ -53,7 +52,7 @@ pub const OwmKeyboard = struct {
         var handled = false;
         if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
             for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-                if (keyboard.owm_server.handleKeybind(sym)) {
+                if (keyboard.server.handleKeybind(sym)) {
                     handled = true;
                     break;
                 }
@@ -61,8 +60,8 @@ pub const OwmKeyboard = struct {
         }
 
         if (!handled) {
-            keyboard.owm_server.wlr_seat.setKeyboard(wlr_keyboard);
-            keyboard.owm_server.wlr_seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+            keyboard.server.wlr_seat.setKeyboard(wlr_keyboard);
+            keyboard.server.wlr_seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
         }
     }
 
@@ -74,6 +73,6 @@ pub const OwmKeyboard = struct {
         keyboard.key_listener.link.remove();
         keyboard.destroy_listener.link.remove();
 
-        gpa.destroy(keyboard);
+        owm.allocator.destroy(keyboard);
     }
 };

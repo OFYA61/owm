@@ -3,7 +3,7 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
-const gpa = @import("utils.zig").gpa;
+const owm = @import("owm.zig");
 
 pub const OwmPopup = struct {
     wlr_xdg_popup: *wlr.XdgPopup,
@@ -25,8 +25,8 @@ pub const OwmPopup = struct {
         };
         xdg_surface.data = scene_tree;
 
-        const popup = try gpa.create(OwmPopup);
-        errdefer gpa.destroy(popup);
+        const popup = try owm.allocator.create(OwmPopup);
+        errdefer owm.allocator.destroy(popup);
 
         popup.* = .{
             .wlr_xdg_popup = wlr_xdg_popup,
@@ -50,6 +50,6 @@ pub const OwmPopup = struct {
         popup.commit_listener.link.remove();
         popup.destroy_listener.link.remove();
 
-        gpa.destroy(popup);
+        owm.allocator.destroy(popup);
     }
 };

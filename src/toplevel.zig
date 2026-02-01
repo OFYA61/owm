@@ -1,15 +1,13 @@
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
-const gpa = @import("utils.zig").gpa;
-const OwmServer = @import("server.zig").OwmServer;
-const OwmOutput = @import("output.zig").OwmOutput;
+const owm = @import("owm.zig");
 
 const TOPLEVEL_SPAWN_SIZE_X = 640;
 const TOPLEVEL_SPAWN_SIZE_Y = 360;
 
 pub const OwmToplevel = struct {
-    owm_server: *OwmServer,
+    server: *owm.Server,
     wlr_xdg_toplevel: *wlr.XdgToplevel,
     wlr_scene_tree: *wlr.SceneTree,
     link: wl.list.Link = undefined,
@@ -28,9 +26,9 @@ pub const OwmToplevel = struct {
     request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
     request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
-    pub fn create(server: *OwmServer, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
-        const toplevel = try gpa.create(OwmToplevel);
-        errdefer gpa.destroy(toplevel);
+    pub fn create(server: *owm.Server, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
+        const toplevel = try owm.allocator.create(OwmToplevel);
+        errdefer owm.allocator.destroy(toplevel);
 
         const output = server.outputAt(server.wlr_cursor.x, server.wlr_cursor.y);
         if (output == null) {
@@ -38,7 +36,7 @@ pub const OwmToplevel = struct {
         }
 
         toplevel.* = .{
-            .owm_server = server,
+            .server = server,
             .wlr_xdg_toplevel = wlr_xdg_toplevel,
             .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
             .current_output_id = output.?.id,
@@ -68,15 +66,15 @@ pub const OwmToplevel = struct {
     /// Called when the surface is mapped, or ready to display on screen
     fn mapCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("map_listener", listener);
-        toplevel.owm_server.toplevels.prepend(toplevel);
-        toplevel.owm_server.focusToplevel(toplevel, toplevel.wlr_xdg_toplevel.base.surface);
+        toplevel.server.toplevels.prepend(toplevel);
+        toplevel.server.focusToplevel(toplevel, toplevel.wlr_xdg_toplevel.base.surface);
     }
 
     /// Called when the surface should no longer be shown
     fn unmapCallback(listener: *wl.Listener(void)) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("unmap_listener", listener);
-        if (toplevel.owm_server.grabbed_toplevel == toplevel) {
-            toplevel.owm_server.resetCursorMode();
+        if (toplevel.server.grabbed_toplevel == toplevel) {
+            toplevel.server.resetCursorMode();
         }
 
         toplevel.link.remove();
@@ -106,12 +104,12 @@ pub const OwmToplevel = struct {
         toplevel.request_maximize_listener.link.remove();
         toplevel.request_fullscreen_listener.link.remove();
 
-        gpa.destroy(toplevel);
+        owm.allocator.destroy(toplevel);
     }
 
     fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_move_listener", listener);
-        const server = toplevel.owm_server;
+        const server = toplevel.server;
         server.grabbed_toplevel = toplevel;
         server.cursor_mode = .move;
         server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
@@ -120,7 +118,7 @@ pub const OwmToplevel = struct {
 
     fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
         const toplevel: *OwmToplevel = @fieldParentPtr("request_resize_listener", listener);
-        const server = toplevel.owm_server;
+        const server = toplevel.server;
 
         server.grabbed_toplevel = toplevel;
         server.cursor_mode = .resize;
@@ -152,8 +150,8 @@ pub const OwmToplevel = struct {
             _ = toplevel.wlr_xdg_toplevel.setSize(box.width, box.height);
             _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
         } else {
-            var located_output: *OwmOutput = undefined;
-            for (toplevel.owm_server.outputs.items) |output| {
+            var located_output: *owm.Output = undefined;
+            for (toplevel.server.outputs.items) |output| {
                 if (output.id == toplevel.current_output_id) {
                     located_output = output;
                     break;

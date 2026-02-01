@@ -3,13 +3,12 @@ const posix = @import("std").posix;
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
-const gpa = @import("utils.zig").gpa;
-const OwmServer = @import("server.zig").OwmServer;
+const owm = @import("owm.zig");
 
 var OUTPUT_COUNTER: usize = 0;
 pub const OwmOutput = struct {
     id: usize,
-    owm_server: *OwmServer,
+    server: *owm.Server,
     wlr_output: *wlr.Output,
     geom: wlr.Box,
 
@@ -17,9 +16,9 @@ pub const OwmOutput = struct {
     request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
     destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
-    pub fn create(server: *OwmServer, wlr_output: *wlr.Output) anyerror!void {
-        const owm_output = try gpa.create(OwmOutput);
-        errdefer gpa.destroy(owm_output);
+    pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
+        const owm_output = try owm.allocator.create(OwmOutput);
+        errdefer owm.allocator.destroy(owm_output);
 
         // Add the new display to the right of all the other displays
         const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
@@ -36,7 +35,7 @@ pub const OwmOutput = struct {
         OUTPUT_COUNTER += 1;
         owm_output.* = .{
             .id = OUTPUT_COUNTER,
-            .owm_server = server,
+            .server = server,
             .wlr_output = wlr_output,
             .geom = geom,
         };
@@ -45,7 +44,7 @@ pub const OwmOutput = struct {
         wlr_output.events.request_state.add(&owm_output.request_state_listener);
         wlr_output.events.destroy.add(&owm_output.destroy_listener);
 
-        try server.outputs.append(gpa, owm_output);
+        try server.outputs.append(owm.allocator, owm_output);
     }
 
     pub fn getGeom(self: *OwmOutput) wlr.Box {
@@ -55,7 +54,7 @@ pub const OwmOutput = struct {
     /// Called every time when an output is ready to display a farme, generally at the refresh rate
     fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const output: *OwmOutput = @fieldParentPtr("frame_listener", listener);
-        const scene_output = output.owm_server.wlr_scene.getSceneOutput(wlr_output).?;
+        const scene_output = output.server.wlr_scene.getSceneOutput(wlr_output).?;
         // Render the scene if needed and commit the output
         _ = scene_output.commit(null);
 
@@ -77,13 +76,13 @@ pub const OwmOutput = struct {
         output.destroy_listener.link.remove();
 
         var index: usize = undefined;
-        for (output.owm_server.outputs.items, 0..) |o, idx| {
+        for (output.server.outputs.items, 0..) |o, idx| {
             if (o.id == output.id) {
                 index = idx;
                 break;
             }
         }
-        _ = output.owm_server.outputs.orderedRemove(index);
-        gpa.destroy(output);
+        _ = output.server.outputs.orderedRemove(index);
+        owm.allocator.destroy(output);
     }
 };

@@ -2,12 +2,12 @@ const std = @import("std");
 
 const wlr = @import("wlroots");
 
-const OwmServer = @import("server.zig").OwmServer;
+const owm = @import("owm.zig");
 
 pub fn main() anyerror!void {
     wlr.log.init(.info, null);
 
-    var server: OwmServer = undefined;
+    var server: owm.Server = undefined;
     try server.init();
     defer server.deinit();
 

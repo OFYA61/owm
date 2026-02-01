@@ -4,11 +4,7 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
-const gpa = @import("utils.zig").gpa;
-const OwmToplevel = @import("toplevel.zig").OwmToplevel;
-const OwmOutput = @import("output.zig").OwmOutput;
-const OwmKeyboard = @import("input.zig").OwmKeyboard;
-const OwmPopup = @import("popup.zig").OwmPopup;
+const owm = @import("owm.zig");
 
 const MIN_TOPLEVEL_WIDTH = 240;
 const MIN_TOPLEVEL_HEIGHT = 135;
@@ -24,23 +20,23 @@ pub const OwmServer = struct {
     wlr_allocator: *wlr.Allocator,
     wlr_renderer: *wlr.Renderer,
     wlr_output_layout: *wlr.OutputLayout,
-    outputs: std.ArrayList(*OwmOutput) = .empty,
+    outputs: std.ArrayList(*owm.Output) = .empty,
 
     wlr_xdg_shell: *wlr.XdgShell,
-    toplevels: wl.list.Head(OwmToplevel, .link) = undefined,
+    toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
     new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
     wlr_seat: *wlr.Seat,
-    keyboards: wl.list.Head(OwmKeyboard, .link) = undefined,
+    keyboards: wl.list.Head(owm.Keyboard, .link) = undefined,
     new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
     request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
     request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
 
     wlr_cursor: *wlr.Cursor,
     wlr_cursor_manager: *wlr.XcursorManager,
-    grabbed_toplevel: ?*OwmToplevel = null,
+    grabbed_toplevel: ?*owm.Toplevel = null,
     cursor_mode: enum { passthrough, move, resize } = .passthrough,
     grab_x: f64 = 0,
     grab_y: f64 = 0,
@@ -126,7 +122,7 @@ pub const OwmServer = struct {
         self.wlr_backend.destroy();
         self.wl_server.destroy();
 
-        self.outputs.deinit(gpa);
+        self.outputs.deinit(owm.allocator);
     }
 
     pub fn setSocket(self: *OwmServer, socket: [:0]const u8) void {
@@ -157,7 +153,7 @@ pub const OwmServer = struct {
         return true;
     }
 
-    pub fn focusToplevel(self: *OwmServer, toplevel: *OwmToplevel, surface: *wlr.Surface) void {
+    pub fn focusToplevel(self: *OwmServer, toplevel: *owm.Toplevel, surface: *wlr.Surface) void {
         if (self.wlr_seat.keyboard_state.focused_surface) |prev_surface| {
             if (prev_surface == surface) return;
             if (wlr.XdgSurface.tryFromWlrSurface(prev_surface)) |xdg_surface| {
@@ -183,10 +179,10 @@ pub const OwmServer = struct {
     fn spawnChild(self: *OwmServer, command: [:0]const u8) anyerror!void {
         var child = std.process.Child.init(
             &[_][]const u8{ "/bin/sh", "-c", command },
-            gpa,
+            owm.allocator,
         );
 
-        var env_map = try std.process.getEnvMap(gpa);
+        var env_map = try std.process.getEnvMap(owm.allocator);
         defer env_map.deinit();
         try env_map.put("WAYLAND_DISPLAY", self.wl_socket.?);
         child.env_map = &env_map;
@@ -194,7 +190,7 @@ pub const OwmServer = struct {
         try child.spawn();
     }
 
-    pub fn outputAt(self: *OwmServer, lx: f64, ly: f64) ?*OwmOutput {
+    pub fn outputAt(self: *OwmServer, lx: f64, ly: f64) ?*owm.Output {
         for (self.outputs.items) |output| {
             const geom = output.getGeom();
             const x = @as(f64, @floatFromInt(geom.x));
@@ -217,7 +213,7 @@ pub const OwmServer = struct {
         sx: f64,
         sy: f64,
         wlr_surface: *wlr.Surface,
-        toplevel: *OwmToplevel,
+        toplevel: *owm.Toplevel,
     };
 
     fn viewAt(self: *OwmServer, lx: f64, ly: f64) ?ViewAtResponse {
@@ -230,7 +226,7 @@ pub const OwmServer = struct {
 
             var it: ?*wlr.SceneTree = node.parent;
             while (it) |n| : (it = n.node.parent) {
-                if (@as(?*OwmToplevel, @ptrCast(@alignCast(n.node.data)))) |toplevel| {
+                if (@as(?*owm.Toplevel, @ptrCast(@alignCast(n.node.data)))) |toplevel| {
                     return ViewAtResponse{
                         .sx = sx,
                         .sy = sy,
@@ -327,7 +323,7 @@ pub const OwmServer = struct {
             return;
         }
 
-        OwmOutput.create(server, wlr_output) catch {
+        owm.Output.create(server, wlr_output) catch {
             std.log.err("Failed to allocate new output", .{});
             wlr_output.destroy();
             return;
@@ -337,7 +333,7 @@ pub const OwmServer = struct {
     /// Called when a client creates a new toplevel (app window)
     fn newXdgToplevelCallback(listener: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
         const server: *OwmServer = @fieldParentPtr("new_toplevel_listener", listener);
-        OwmToplevel.create(server, wlr_xdg_toplevel) catch {
+        owm.Toplevel.create(server, wlr_xdg_toplevel) catch {
             std.log.err("Failed to allocate new toplevel", .{});
             wlr_xdg_toplevel.sendClose();
             return;
@@ -346,7 +342,7 @@ pub const OwmServer = struct {
 
     /// Called when a client create a new popup
     fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-        OwmPopup.create(wlr_xdg_popup) catch {
+        owm.Popup.create(wlr_xdg_popup) catch {
             std.log.err("Failed to allocate new popup", .{});
             return;
         };
@@ -365,7 +361,7 @@ pub const OwmServer = struct {
                 server.wlr_cursor.attachInputDevice(input_device);
             },
             .keyboard => {
-                OwmKeyboard.create(server, input_device) catch |err| {
+                owm.Keyboard.create(server, input_device) catch |err| {
                     std.log.err("Failed to allocate keyboard: {}", .{err});
                     return;
                 };
