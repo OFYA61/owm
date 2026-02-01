@@ -5,12 +5,11 @@ const wlr = @import("wlroots");
 
 const owm = @import("owm.zig");
 
-pub const OwmPopup = struct {
-    wlr_xdg_popup: *wlr.XdgPopup,
-    link: wl.list.Link = undefined,
+pub const Popup = struct {
+    _wlr_xdg_popup: *wlr.XdgPopup,
 
-    commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
-    destroy_listener: wl.Listener(void) = .init(destroyCallback),
+    _commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
+    _destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
     pub fn create(wlr_xdg_popup: *wlr.XdgPopup) anyerror!void {
         const xdg_surface = wlr_xdg_popup.base;
@@ -25,31 +24,31 @@ pub const OwmPopup = struct {
         };
         xdg_surface.data = scene_tree;
 
-        const popup = try owm.allocator.create(OwmPopup);
+        const popup = try owm.allocator.create(Popup);
         errdefer owm.allocator.destroy(popup);
 
         popup.* = .{
-            .wlr_xdg_popup = wlr_xdg_popup,
+            ._wlr_xdg_popup = wlr_xdg_popup,
         };
 
-        xdg_surface.surface.events.commit.add(&popup.commit_listener);
-        wlr_xdg_popup.events.destroy.add(&popup.destroy_listener);
-    }
-
-    /// Called when a new surface state is commited
-    fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
-        const popup: *OwmPopup = @fieldParentPtr("commit_listener", listener);
-        if (popup.wlr_xdg_popup.base.initial_commit) {
-            _ = popup.wlr_xdg_popup.base.scheduleConfigure();
-        }
-    }
-
-    fn destroyCallback(listener: *wl.Listener(void)) void {
-        const popup: *OwmPopup = @fieldParentPtr("destroy_listener", listener);
-
-        popup.commit_listener.link.remove();
-        popup.destroy_listener.link.remove();
-
-        owm.allocator.destroy(popup);
+        xdg_surface.surface.events.commit.add(&popup._commit_listener);
+        wlr_xdg_popup.events.destroy.add(&popup._destroy_listener);
     }
 };
+
+/// Called when a new surface state is commited
+fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
+    const popup: *Popup = @fieldParentPtr("_commit_listener", listener);
+    if (popup._wlr_xdg_popup.base.initial_commit) {
+        _ = popup._wlr_xdg_popup.base.scheduleConfigure();
+    }
+}
+
+fn destroyCallback(listener: *wl.Listener(void)) void {
+    const popup: *Popup = @fieldParentPtr("_destroy_listener", listener);
+
+    popup._commit_listener.link.remove();
+    popup._destroy_listener.link.remove();
+
+    owm.allocator.destroy(popup);
+}
