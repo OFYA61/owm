@@ -193,12 +193,14 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         _ = toplevel._wlr_xdg_toplevel.setMaximized(false);
     } else {
         var located_output: *owm.Output = undefined;
-        for (toplevel._server.outputs.items) |output| {
+        var output_iterator = toplevel._server.outputs.iterator(.forward);
+        while (output_iterator.next()) |output| {
             if (output.id == toplevel.current_output_id) {
                 located_output = output;
                 break;
             }
         }
+
         const box = located_output.geom;
         toplevel._box_before_maximize = .{
             .x = toplevel._x,

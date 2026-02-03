@@ -20,7 +20,7 @@ pub const Server = struct {
     wlr_allocator: *wlr.Allocator,
     wlr_renderer: *wlr.Renderer,
     wlr_output_layout: *wlr.OutputLayout,
-    outputs: std.ArrayList(*owm.Output) = .empty,
+    outputs: wl.list.Head(owm.Output, .link) = undefined,
 
     wlr_xdg_shell: *wlr.XdgShell,
     new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
@@ -83,6 +83,8 @@ pub const Server = struct {
         _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
         _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
 
+        self.outputs.init();
+
         self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
         self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
@@ -119,8 +121,6 @@ pub const Server = struct {
 
         self.wlr_backend.destroy();
         self.wl_server.destroy();
-
-        self.outputs.deinit(owm.allocator);
     }
 
     pub fn setSocket(self: *Server, socket: [:0]const u8) void {
@@ -184,7 +184,8 @@ pub const Server = struct {
     }
 
     pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
-        for (self.outputs.items) |output| {
+        var output_iterator = self.outputs.iterator(.forward);
+        while (output_iterator.next()) |output| {
             const geom = output.geom;
             const x = @as(f64, @floatFromInt(geom.x));
             const y = @as(f64, @floatFromInt(geom.y));

@@ -19,6 +19,7 @@ pub const Output = struct {
     _wlr_output: *wlr.Output,
     /// Geometric properties of the output (position and size)
     geom: wlr.Box,
+    link: wl.list.Link = undefined,
 
     /// Listener for frame events when output is ready to display a frame
     _frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
@@ -72,11 +73,7 @@ pub const Output = struct {
         wlr_output.events.request_state.add(&owm_output._request_state_listener);
         wlr_output.events.destroy.add(&owm_output._destroy_listener);
 
-        try server.outputs.append(owm.allocator, owm_output);
-    }
-
-    pub fn getGeom(self: *Output) wlr.Box {
-        return self.geom;
+        server.outputs.append(owm_output);
     }
 };
 
@@ -112,13 +109,7 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     output._request_state_listener.link.remove();
     output._destroy_listener.link.remove();
 
-    var index: usize = undefined;
-    for (output._server.outputs.items, 0..) |o, idx| {
-        if (o.id == output.id) {
-            index = idx;
-            break;
-        }
-    }
-    _ = output._server.outputs.orderedRemove(index);
+    output.link.remove();
+
     owm.allocator.destroy(output);
 }
