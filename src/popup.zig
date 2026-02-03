@@ -7,6 +7,7 @@ const owm = @import("owm.zig");
 
 pub const Popup = struct {
     _wlr_xdg_popup: *wlr.XdgPopup,
+    _wlr_scene_tree: *wlr.SceneTree,
 
     _commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
     _destroy_listener: wl.Listener(void) = .init(destroyCallback),
@@ -29,6 +30,7 @@ pub const Popup = struct {
 
         popup.* = .{
             ._wlr_xdg_popup = wlr_xdg_popup,
+            ._wlr_scene_tree = scene_tree,
         };
 
         xdg_surface.surface.events.commit.add(&popup._commit_listener);

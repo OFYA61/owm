@@ -1,3 +1,4 @@
+const std = @import("std");
 const posix = @import("std").posix;
 
 const wl = @import("wayland").server.wl;
@@ -29,6 +30,23 @@ pub const Output = struct {
     pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
         const owm_output = try owm.allocator.create(Output);
         errdefer owm.allocator.destroy(owm_output);
+
+        if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
+            std.log.err("Failed to initialize render with allocator and renderer on new output", .{});
+            return;
+        }
+
+        var state = wlr.Output.State.init();
+        defer state.finish();
+        state.setEnabled(true);
+        if (wlr_output.preferredMode()) |mode| {
+            std.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
+            state.setMode(mode);
+        }
+        if (!wlr_output.commitState(&state)) {
+            std.log.err("Failed to commit state for new output", .{});
+            return;
+        }
 
         // Add the new display to the right of all the other displays
         const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
@@ -77,6 +95,14 @@ fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) v
 fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
     const output: *Output = @fieldParentPtr("_request_state_listener", listener);
     _ = output._wlr_output.commitState(event.state);
+    if (output._server.wlr_backend.isWl() or output._server.wlr_backend.isX11()) {
+        output.geom = .{
+            .x = 0,
+            .y = 0,
+            .width = event.output.width,
+            .height = event.output.height,
+        };
+    }
 }
 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {

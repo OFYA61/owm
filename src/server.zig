@@ -137,7 +137,7 @@ pub const Server = struct {
         switch (@intFromEnum(key)) {
             xkb.Keysym.Escape => self.wl_server.terminate(),
             xkb.Keysym.t => {
-                self.spawnChild("cosmic-term") catch {
+                self.spawnChild("ghostty") catch {
                     std.log.err("Failed to spawn cosmic-term", .{});
                 };
             },
