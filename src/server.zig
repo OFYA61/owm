@@ -28,6 +28,7 @@ pub const Server = struct {
     new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
     wlr_seat: *wlr.Seat,
+    focused_toplevel: ?*owm.Toplevel = null,
     new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
     request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
     request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
@@ -152,11 +153,9 @@ pub const Server = struct {
     }
 
     pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel, surface: *wlr.Surface) void {
-        if (self.wlr_seat.keyboard_state.focused_surface) |prev_surface| {
-            if (prev_surface == surface) return;
-            if (wlr.XdgSurface.tryFromWlrSurface(prev_surface)) |xdg_surface| {
-                _ = xdg_surface.role_data.toplevel.?.setActivated(false);
-            }
+        if (self.focused_toplevel) |prev_toplevel| {
+            if (prev_toplevel.checkSurfaceMatch(surface)) return;
+            prev_toplevel.setFocus(false);
         }
 
         toplevel.setFocus(true);
@@ -167,6 +166,8 @@ pub const Server = struct {
             wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
             &wlr_keyboard.modifiers,
         );
+
+        self.focused_toplevel = toplevel;
     }
 
     fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
@@ -299,23 +300,6 @@ pub const Server = struct {
     /// Called when a new display is discovered
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
-        if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
-            std.log.err("Failed to initialize render with allocator and renderer on new output", .{});
-            return;
-        }
-
-        var state = wlr.Output.State.init();
-        defer state.finish();
-        state.setEnabled(true);
-        if (wlr_output.preferredMode()) |mode| {
-            std.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
-            state.setMode(mode);
-        }
-        if (!wlr_output.commitState(&state)) {
-            std.log.err("Failed to commit state for new output", .{});
-            return;
-        }
-
         owm.Output.create(server, wlr_output) catch {
             std.log.err("Failed to allocate new output", .{});
             wlr_output.destroy();
@@ -406,6 +390,11 @@ pub const Server = struct {
         } else {
             if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
                 server.focusToplevel(result.toplevel, result.wlr_surface);
+            } else {
+                if (server.focused_toplevel) |toplevel| {
+                    toplevel.setFocus(false);
+                    server.focused_toplevel = null;
+                }
             }
         }
     }

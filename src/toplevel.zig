@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
@@ -5,6 +7,9 @@ const owm = @import("owm.zig");
 
 const TOPLEVEL_SPAWN_SIZE_X = 640;
 const TOPLEVEL_SPAWN_SIZE_Y = 360;
+const FOCUS_BORDER_WIDTH = 5;
+const FOCUS_BORDER_SIZE_DIFF = FOCUS_BORDER_WIDTH * 2;
+const FOCUS_BORDER_COLOR = [4]f32{ 0, 255, 255, 255 }; // cyan
 
 /// Represents a toplevel window in the Wayland compositor.
 /// Manages window geometry, input events, and XDG tiling functionality.
@@ -24,6 +29,7 @@ pub const Toplevel = struct {
     current_output_id: usize,
     /// Original geometry before maximizing
     _box_before_maximize: wlr.Box,
+    _border_rect: ?*wlr.SceneRect = null,
 
     /// Listener for surface mapping events
     _map_listener: wl.Listener(void) = .init(mapCallback),
@@ -79,15 +85,41 @@ pub const Toplevel = struct {
         toplevel._y = spawn_y;
     }
 
+    pub fn checkSurfaceMatch(self: *Toplevel, surface: *wlr.Surface) bool {
+        return self._wlr_xdg_toplevel.base.surface == surface;
+    }
+
     pub fn setFocus(self: *Toplevel, focus: bool) void {
         _ = self._wlr_xdg_toplevel.setActivated(focus);
         if (focus) {
+            const geom = self.getGeom();
+
             self._wlr_scene_tree.node.raiseToTop();
+
+            const border_rect = self._wlr_scene_tree.createSceneRect(
+                geom.width + FOCUS_BORDER_SIZE_DIFF,
+                geom.height + FOCUS_BORDER_SIZE_DIFF,
+                &FOCUS_BORDER_COLOR,
+            ) catch {
+                return;
+            };
+            border_rect.node.setPosition(-FOCUS_BORDER_WIDTH, -FOCUS_BORDER_WIDTH);
+            border_rect.node.lowerToBottom();
+            self._border_rect = border_rect;
+        } else {
+            self._border_rect.?.node.destroy();
+            self._border_rect = null;
         }
     }
 
     pub fn setSize(self: *Toplevel, new_width: i32, new_height: i32) void {
         _ = self._wlr_xdg_toplevel.setSize(new_width, new_height);
+        if (self._border_rect) |border_rect| {
+            border_rect.setSize(
+                new_width + FOCUS_BORDER_SIZE_DIFF,
+                new_height + FOCUS_BORDER_SIZE_DIFF,
+            );
+        }
     }
 
     pub fn setPos(self: *Toplevel, new_x: c_int, new_y: c_int) void {
