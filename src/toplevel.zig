@@ -114,12 +114,6 @@ pub const Toplevel = struct {
 
     pub fn setSize(self: *Toplevel, new_width: i32, new_height: i32) void {
         _ = self._wlr_xdg_toplevel.setSize(new_width, new_height);
-        if (self._border_rect) |border_rect| {
-            border_rect.setSize(
-                new_width + FOCUS_BORDER_SIZE_DIFF,
-                new_height + FOCUS_BORDER_SIZE_DIFF,
-            );
-        }
     }
 
     pub fn setPos(self: *Toplevel, new_x: c_int, new_y: c_int) void {
@@ -157,6 +151,15 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
         // dimensions itself.
         _ = toplevel._wlr_xdg_toplevel.setSize(TOPLEVEL_SPAWN_SIZE_X, TOPLEVEL_SPAWN_SIZE_Y);
     }
+    if (toplevel._server.cursor_mode != .resize) {
+        return;
+    }
+    if (toplevel._border_rect) |border_rect| {
+        border_rect.setSize(
+            toplevel._wlr_xdg_toplevel.base.geometry.width + FOCUS_BORDER_SIZE_DIFF,
+            toplevel._wlr_xdg_toplevel.base.geometry.height + FOCUS_BORDER_SIZE_DIFF,
+        );
+    }
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
@@ -170,6 +173,10 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel._request_resize_listener.link.remove();
     toplevel._request_maximize_listener.link.remove();
     toplevel._request_fullscreen_listener.link.remove();
+
+    if (toplevel._server.focused_toplevel == toplevel) {
+        toplevel._server.focused_toplevel = null;
+    }
 
     owm.allocator.destroy(toplevel);
 }

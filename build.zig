@@ -53,6 +53,7 @@ pub fn build(b: *std.Build) void {
     owm.root_module.addImport("wayland", wayland);
     owm.root_module.addImport("xkbcommon", xkbcommon);
     owm.root_module.addImport("wlroots", wlroots);
+    owm.root_module.addImport("pixman", pixman);
 
     owm.linkSystemLibrary("wayland-server");
     owm.linkSystemLibrary("xkbcommon");
