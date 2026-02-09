@@ -6,12 +6,9 @@ const wlr = @import("wlroots");
 
 const owm = @import("owm.zig");
 
-var OUTPUT_COUNTER: usize = 0;
-
 /// Represents a display output in the Wayland compositor.
 /// Manages output geometry, frame callbacks, state requests, and destruction events.
 pub const Output = struct {
-    id: usize,
     server: *owm.Server,
     wlr_output: *wlr.Output,
     geom: wlr.Box,
@@ -54,9 +51,7 @@ pub const Output = struct {
             .height = wlr_output.height,
         };
 
-        OUTPUT_COUNTER += 1;
         owm_output.* = .{
-            .id = OUTPUT_COUNTER,
             .server = server,
             .wlr_output = wlr_output,
             .geom = geom,
