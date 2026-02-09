@@ -165,15 +165,15 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
     const toplevel: *Toplevel = @fieldParentPtr("request_move_listener", listener);
+    const server = toplevel.server;
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
-        // TODO: make it focused and dragging at this stage
-        // TODO: make it positioned so that the cursor is holding it from the middle
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
-        return;
+        const new_x = @as(c_int, @intFromFloat(toplevel.server.wlr_cursor.x)) - @divFloor(box.width, 2);
+        const new_y = @as(c_int, @intFromFloat(toplevel.server.wlr_cursor.y)) - 3;
+        toplevel.setPos(new_x, new_y);
     }
-    const server = toplevel.server;
     server.grabbed_toplevel = toplevel;
     server.cursor_mode = .move;
     server.grab_x = server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
@@ -209,8 +209,8 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
 
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
         const box = toplevel.box_before_maximize;
-        toplevel.setPos(box.x, box.y);
         toplevel.setSize(box.width, box.height);
+        toplevel.setPos(box.x, box.y);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
     } else {
         const output_geom = toplevel.current_output.geom;
