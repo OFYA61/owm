@@ -6,11 +6,11 @@ const wlr = @import("wlroots");
 const owm = @import("owm.zig");
 
 pub const Popup = struct {
-    _wlr_xdg_popup: *wlr.XdgPopup,
-    _wlr_scene_tree: *wlr.SceneTree,
+    wlr_xdg_popup: *wlr.XdgPopup,
+    wlr_scene_tree: *wlr.SceneTree,
 
-    _commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
-    _destroy_listener: wl.Listener(void) = .init(destroyCallback),
+    commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
+    destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
     pub fn create(wlr_xdg_popup: *wlr.XdgPopup) anyerror!void {
         const xdg_surface = wlr_xdg_popup.base;
@@ -29,28 +29,28 @@ pub const Popup = struct {
         errdefer owm.allocator.destroy(popup);
 
         popup.* = .{
-            ._wlr_xdg_popup = wlr_xdg_popup,
-            ._wlr_scene_tree = scene_tree,
+            .wlr_xdg_popup = wlr_xdg_popup,
+            .wlr_scene_tree = scene_tree,
         };
 
-        xdg_surface.surface.events.commit.add(&popup._commit_listener);
-        wlr_xdg_popup.events.destroy.add(&popup._destroy_listener);
+        xdg_surface.surface.events.commit.add(&popup.commit_listener);
+        wlr_xdg_popup.events.destroy.add(&popup.destroy_listener);
     }
 };
 
 /// Called when a new surface state is commited
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
-    const popup: *Popup = @fieldParentPtr("_commit_listener", listener);
-    if (popup._wlr_xdg_popup.base.initial_commit) {
-        _ = popup._wlr_xdg_popup.base.scheduleConfigure();
+    const popup: *Popup = @fieldParentPtr("commit_listener", listener);
+    if (popup.wlr_xdg_popup.base.initial_commit) {
+        _ = popup.wlr_xdg_popup.base.scheduleConfigure();
     }
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
-    const popup: *Popup = @fieldParentPtr("_destroy_listener", listener);
+    const popup: *Popup = @fieldParentPtr("destroy_listener", listener);
 
-    popup._commit_listener.link.remove();
-    popup._destroy_listener.link.remove();
+    popup.commit_listener.link.remove();
+    popup.destroy_listener.link.remove();
 
     owm.allocator.destroy(popup);
 }

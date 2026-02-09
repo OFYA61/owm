@@ -11,22 +11,15 @@ var OUTPUT_COUNTER: usize = 0;
 /// Represents a display output in the Wayland compositor.
 /// Manages output geometry, frame callbacks, state requests, and destruction events.
 pub const Output = struct {
-    /// Unique identifier for this output
     id: usize,
-    /// Reference to the server instance that owns this output
-    _server: *owm.Server,
-    /// Reference to the wlroots output object
-    _wlr_output: *wlr.Output,
-    /// Geometric properties of the output (position and size)
+    server: *owm.Server,
+    wlr_output: *wlr.Output,
     geom: wlr.Box,
     link: wl.list.Link = undefined,
 
-    /// Listener for frame events when output is ready to display a frame
-    _frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
-    /// Listener for requests to change output state (e.g., mode changes)
-    _request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
-    /// Listener for output destruction events
-    _destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
+    frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
+    request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
+    destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
     pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
         const owm_output = try owm.allocator.create(Output);
@@ -64,14 +57,14 @@ pub const Output = struct {
         OUTPUT_COUNTER += 1;
         owm_output.* = .{
             .id = OUTPUT_COUNTER,
-            ._server = server,
-            ._wlr_output = wlr_output,
+            .server = server,
+            .wlr_output = wlr_output,
             .geom = geom,
         };
 
-        wlr_output.events.frame.add(&owm_output._frame_listener);
-        wlr_output.events.request_state.add(&owm_output._request_state_listener);
-        wlr_output.events.destroy.add(&owm_output._destroy_listener);
+        wlr_output.events.frame.add(&owm_output.frame_listener);
+        wlr_output.events.request_state.add(&owm_output.request_state_listener);
+        wlr_output.events.destroy.add(&owm_output.destroy_listener);
 
         server.outputs.append(owm_output);
     }
@@ -79,8 +72,8 @@ pub const Output = struct {
 
 /// Called every time when an output is ready to display a farme, generally at the refresh rate
 fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-    const output: *Output = @fieldParentPtr("_frame_listener", listener);
-    const scene_output = output._server.wlr_scene.getSceneOutput(wlr_output).?;
+    const output: *Output = @fieldParentPtr("frame_listener", listener);
+    const scene_output = output.server.wlr_scene.getSceneOutput(wlr_output).?;
     // Render the scene if needed and commit the output
     _ = scene_output.commit(null);
 
@@ -90,9 +83,9 @@ fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) v
 
 /// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
 fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
-    const output: *Output = @fieldParentPtr("_request_state_listener", listener);
-    _ = output._wlr_output.commitState(event.state);
-    if (output._server.wlr_backend.isWl() or output._server.wlr_backend.isX11()) {
+    const output: *Output = @fieldParentPtr("request_state_listener", listener);
+    _ = output.wlr_output.commitState(event.state);
+    if (output.server.wlr_backend.isWl() or output.server.wlr_backend.isX11()) {
         output.geom = .{
             .x = 0,
             .y = 0,
@@ -103,11 +96,11 @@ fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), 
 }
 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
-    const output: *Output = @fieldParentPtr("_destroy_listener", listener);
+    const output: *Output = @fieldParentPtr("destroy_listener", listener);
 
-    output._frame_listener.link.remove();
-    output._request_state_listener.link.remove();
-    output._destroy_listener.link.remove();
+    output.frame_listener.link.remove();
+    output.request_state_listener.link.remove();
+    output.destroy_listener.link.remove();
 
     output.link.remove();
 
