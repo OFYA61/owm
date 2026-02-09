@@ -184,6 +184,10 @@ pub const Server = struct {
         try child.spawn();
     }
 
+    pub fn outputAtCursor(self: *Server) ?*owm.Output {
+        return self.outputAt(self.wlr_cursor.x, self.wlr_cursor.y);
+    }
+
     pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
         var output_iterator = self.outputs.iterator(.forward);
         while (output_iterator.next()) |output| {
@@ -382,8 +386,8 @@ pub const Server = struct {
         _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
         if (event.state == .released) {
             if (server.grabbed_toplevel) |toplevel| {
-                if (server.outputAt(server.wlr_cursor.x, server.wlr_cursor.y)) |output| {
-                    toplevel.current_output_id = output.id;
+                if (server.outputAtCursor()) |output| {
+                    toplevel.current_output = output;
                 }
             }
             server.resetCursorMode();

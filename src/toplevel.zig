@@ -20,7 +20,7 @@ pub const Toplevel = struct {
 
     x: i32 = 0,
     y: i32 = 0,
-    current_output_id: usize,
+    current_output: *owm.Output,
     box_before_maximize: wlr.Box,
     border_rect: ?*wlr.SceneRect = null,
 
@@ -37,16 +37,13 @@ pub const Toplevel = struct {
         const toplevel = try owm.allocator.create(Toplevel);
         errdefer owm.allocator.destroy(toplevel);
 
-        const output = server.outputAt(server.wlr_cursor.x, server.wlr_cursor.y);
-        if (output == null) {
-            return error.CursorNotOnAnyOutput;
-        }
+        const output = server.outputAtCursor() orelse return error.CursorNotOnOutput;
 
         toplevel.* = .{
             .server = server,
             .wlr_xdg_toplevel = wlr_xdg_toplevel,
             .wlr_scene_tree = try server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
-            .current_output_id = output.?.id,
+            .current_output = output,
             .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
         };
 
@@ -62,7 +59,7 @@ pub const Toplevel = struct {
         wlr_xdg_toplevel.events.request_maximize.add(&toplevel.request_maximize_listener);
         wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
 
-        const geom = output.?.geom;
+        const geom = output.geom;
         const spawn_x = geom.x + @divExact(geom.width, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_X, 2);
         const spawn_y = geom.y + @divExact(geom.height, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_Y, 2);
         toplevel.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
@@ -216,16 +213,7 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
     } else {
-        var located_output: *owm.Output = undefined;
-        var output_iterator = toplevel.server.outputs.iterator(.forward);
-        while (output_iterator.next()) |output| {
-            if (output.id == toplevel.current_output_id) {
-                located_output = output;
-                break;
-            }
-        }
-
-        const box = located_output.geom;
+        const output_geom = toplevel.current_output.geom;
         toplevel.box_before_maximize = .{
             .x = toplevel.x,
             .y = toplevel.y,
@@ -233,11 +221,11 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
             .height = toplevel.wlr_xdg_toplevel.current.height,
         };
 
-        toplevel.x = box.x;
-        toplevel.y = box.y;
+        toplevel.x = output_geom.x;
+        toplevel.y = output_geom.y;
 
-        toplevel.wlr_scene_tree.node.setPosition(box.x, box.y);
-        _ = toplevel.wlr_xdg_toplevel.setSize(box.width, box.height);
+        toplevel.wlr_scene_tree.node.setPosition(output_geom.x, output_geom.y);
+        _ = toplevel.wlr_xdg_toplevel.setSize(output_geom.width, output_geom.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(true);
     }
 
