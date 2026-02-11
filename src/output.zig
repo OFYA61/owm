@@ -26,7 +26,7 @@ pub const Output = struct {
         errdefer owm.c_alloc.destroy(output);
 
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
-            owm.log.err("Failed to initialize render with allocator and renderer on new output", .{});
+            owm.log.err("Failed to initialize render with allocator and renderer on new output", .{}, @src());
             return error.FailedToInitRendererForOutput;
         }
 
@@ -34,11 +34,11 @@ pub const Output = struct {
         defer state.finish();
         state.setEnabled(true);
         if (wlr_output.preferredMode()) |mode| {
-            owm.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
+            owm.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh }, @src());
             state.setMode(mode);
         }
         if (!wlr_output.commitState(&state)) {
-            owm.log.err("Failed to commit state for new output", .{});
+            owm.log.err("Failed to commit state for new output", .{}, @src());
             return error.FailedToCommitInitialStateForOutput;
         }
 

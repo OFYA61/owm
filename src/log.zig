@@ -18,12 +18,14 @@ pub fn init() anyerror!void {
     if (builtin.mode == .Debug) {
         config.level = .debug;
         config.auto_flush = true;
+        config.show_filename = true;
+        config.show_lineno = true;
     } else {
         config.level = .info;
         config.auto_flush = false;
+        config.show_filename = false;
+        config.show_lineno = false;
     }
-    config.show_filename = true;
-    config.show_lineno = true;
     config.show_time = true;
     log.configure(config);
 
@@ -82,14 +84,14 @@ pub fn deinit() void {
     log.deinit();
 }
 
-pub fn debug(comptime fmt: []const u8, args: anytype) void {
-    log.debugf(fmt, args, @src()) catch unreachable;
+pub fn debug(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
+    log.debugf(fmt, args, src) catch unreachable;
 }
 
-pub fn info(comptime fmt: []const u8, args: anytype) void {
-    log.infof(fmt, args, @src()) catch unreachable;
+pub fn info(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
+    log.infof(fmt, args, src) catch unreachable;
 }
 
-pub fn err(comptime fmt: []const u8, args: anytype) void {
-    log.errf(fmt, args, @src()) catch unreachable;
+pub fn err(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
+    log.errf(fmt, args, src) catch unreachable;
 }

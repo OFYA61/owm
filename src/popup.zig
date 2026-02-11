@@ -20,7 +20,7 @@ pub const Popup = struct {
             return;
         };
         const scene_tree = parent_tree.createSceneXdgSurface(xdg_surface) catch {
-            owm.log.err("failed to allocate xdg popup node", .{});
+            owm.log.err("failed to allocate xdg popup node", .{}, @src());
             return;
         };
         xdg_surface.data = scene_tree;
