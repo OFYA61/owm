@@ -48,7 +48,7 @@ pub const Server = struct {
     cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
 
     pub fn init(self: *Server) anyerror!void {
-        wlr.log.init(.info, null);
+        wlr.log.init(.err, null);
 
         const wl_server = try wl.Server.create();
 
@@ -130,7 +130,7 @@ pub const Server = struct {
 
     pub fn run(self: *Server) anyerror!void {
         try self.wlr_backend.start();
-        std.log.info("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
+        owm.log.info("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
         self.wl_server.run();
     }
 
@@ -139,12 +139,12 @@ pub const Server = struct {
             xkb.Keysym.Escape => self.wl_server.terminate(),
             xkb.Keysym.t => {
                 self.spawnChild("ghostty") catch {
-                    std.log.err("Failed to spawn cosmic-term", .{});
+                    owm.log.err("Failed to spawn cosmic-term", .{});
                 };
             },
             xkb.Keysym.f => {
                 self.spawnChild("cosmic-files") catch {
-                    std.log.err("failed to spawn cosmic-files", .{});
+                    owm.log.err("failed to spawn cosmic-files", .{});
                 };
             },
             else => return false,
@@ -173,10 +173,10 @@ pub const Server = struct {
     fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
         var child = std.process.Child.init(
             &[_][]const u8{ "/bin/sh", "-c", command },
-            owm.allocator,
+            owm.c_alloc,
         );
 
-        var env_map = try std.process.getEnvMap(owm.allocator);
+        var env_map = try std.process.getEnvMap(owm.c_alloc);
         defer env_map.deinit();
         try env_map.put("WAYLAND_DISPLAY", self.wl_socket.?);
         child.env_map = &env_map;
@@ -305,7 +305,7 @@ pub const Server = struct {
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
         owm.Output.create(server, wlr_output) catch {
-            std.log.err("Failed to allocate new output", .{});
+            owm.log.err("Failed to allocate new output", .{});
             wlr_output.destroy();
             return;
         };
@@ -315,7 +315,7 @@ pub const Server = struct {
     fn newXdgToplevelCallback(listener: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
         const server: *Server = @fieldParentPtr("new_toplevel_listener", listener);
         owm.Toplevel.create(server, wlr_xdg_toplevel) catch {
-            std.log.err("Failed to allocate new toplevel", .{});
+            owm.log.err("Failed to allocate new toplevel", .{});
             wlr_xdg_toplevel.sendClose();
             return;
         };
@@ -324,7 +324,7 @@ pub const Server = struct {
     /// Called when a client create a new popup
     fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
         owm.Popup.create(wlr_xdg_popup) catch {
-            std.log.err("Failed to allocate new popup", .{});
+            owm.log.err("Failed to allocate new popup", .{});
             return;
         };
     }
@@ -343,7 +343,7 @@ pub const Server = struct {
             },
             .keyboard => {
                 _ = owm.Keyboard.create(server, input_device) catch |err| {
-                    std.log.err("Failed to allocate keyboard: {}", .{err});
+                    owm.log.err("Failed to allocate keyboard: {}", .{err});
                     return;
                 };
             },

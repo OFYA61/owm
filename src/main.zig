@@ -1,8 +1,9 @@
-const std = @import("std");
-
 const owm = @import("owm.zig");
 
 pub fn main() anyerror!void {
+    try owm.log.init();
+    defer owm.log.deinit();
+
     var server: owm.Server = undefined;
     try server.init();
     defer server.deinit();

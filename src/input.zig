@@ -15,8 +15,8 @@ pub const Keyboard = struct {
     destroy_listener: wl.Listener(*wlr.InputDevice) = .init(destroyCallback),
 
     pub fn create(server: *owm.Server, device: *wlr.InputDevice) anyerror!*Keyboard {
-        const keyboard = try owm.allocator.create(Keyboard);
-        errdefer owm.allocator.destroy(keyboard);
+        const keyboard = try owm.c_alloc.create(Keyboard);
+        errdefer owm.c_alloc.destroy(keyboard);
 
         keyboard.* = .{ .server = server, .wlr_device = device };
 
@@ -43,7 +43,7 @@ pub const Keyboard = struct {
         self.key_listener.link.remove();
         self.destroy_listener.link.remove();
 
-        owm.allocator.destroy(self);
+        owm.c_alloc.destroy(self);
     }
 };
 

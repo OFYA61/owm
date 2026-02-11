@@ -1,4 +1,7 @@
-pub const allocator = @import("utils.zig").allocator;
+pub const c_alloc = @import("utils.zig").allocator;
+
+// pub var log: *@import("logly").Logger = undefined;
+pub const log = @import("log.zig");
 
 pub const Keyboard = @import("input.zig").Keyboard;
 pub const Output = @import("output.zig").Output;

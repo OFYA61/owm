@@ -18,6 +18,10 @@
             .url = "https://codeberg.org/ifreund/zig-wlroots/archive/v0.19.3.tar.gz",
             .hash = "wlroots-0.19.3-jmOlcuL_AwBHhLCwpFsXbTizE3q9BugFmGX-XIxqcPMc",
         },
+        .logly = .{
+            .url = "https://github.com/muhammad-fiaz/logly.zig/archive/refs/tags/0.1.6.tar.gz",
+            .hash = "logly-0.1.6-kZjLexxIEgCMOhBA3f1bx3lzP-JrTZDAfcYc7vVrtbzV",
+        },
     },
     .paths = .{""},
     .fingerprint = 0xefb7a7db3d78b339,

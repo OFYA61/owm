@@ -19,11 +19,11 @@ pub const Output = struct {
     destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
     pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
-        const owm_output = try owm.allocator.create(Output);
-        errdefer owm.allocator.destroy(owm_output);
+        const owm_output = try owm.c_alloc.create(Output);
+        errdefer owm.c_alloc.destroy(owm_output);
 
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
-            std.log.err("Failed to initialize render with allocator and renderer on new output", .{});
+            owm.log.err("Failed to initialize render with allocator and renderer on new output", .{});
             return;
         }
 
@@ -31,11 +31,11 @@ pub const Output = struct {
         defer state.finish();
         state.setEnabled(true);
         if (wlr_output.preferredMode()) |mode| {
-            std.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
+            owm.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh });
             state.setMode(mode);
         }
         if (!wlr_output.commitState(&state)) {
-            std.log.err("Failed to commit state for new output", .{});
+            owm.log.err("Failed to commit state for new output", .{});
             return;
         }
 
@@ -99,5 +99,5 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
 
     output.link.remove();
 
-    owm.allocator.destroy(output);
+    owm.c_alloc.destroy(output);
 }

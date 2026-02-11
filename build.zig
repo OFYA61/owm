@@ -39,6 +39,11 @@ pub fn build(b: *std.Build) void {
     wlroots.resolved_target = target;
     wlroots.linkSystemLibrary("wlroots-0.19", .{});
 
+    const logly = b.dependency("logly", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const owm = b.addExecutable(.{
         .name = "owm",
         .root_module = b.createModule(.{
@@ -54,6 +59,7 @@ pub fn build(b: *std.Build) void {
     owm.root_module.addImport("xkbcommon", xkbcommon);
     owm.root_module.addImport("wlroots", wlroots);
     owm.root_module.addImport("pixman", pixman);
+    owm.root_module.addImport("logly", logly.module("logly"));
 
     owm.linkSystemLibrary("wayland-server");
     owm.linkSystemLibrary("xkbcommon");

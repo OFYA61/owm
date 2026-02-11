@@ -34,8 +34,8 @@ pub const Toplevel = struct {
     request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
     pub fn create(server: *owm.Server, wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
-        const toplevel = try owm.allocator.create(Toplevel);
-        errdefer owm.allocator.destroy(toplevel);
+        const toplevel = try owm.c_alloc.create(Toplevel);
+        errdefer owm.c_alloc.destroy(toplevel);
 
         const output = server.outputAtCursor() orelse return error.CursorNotOnOutput;
 
@@ -160,7 +160,7 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
         toplevel.server.focused_toplevel = null;
     }
 
-    owm.allocator.destroy(toplevel);
+    owm.c_alloc.destroy(toplevel);
 }
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {

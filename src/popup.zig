@@ -20,13 +20,13 @@ pub const Popup = struct {
             return;
         };
         const scene_tree = parent_tree.createSceneXdgSurface(xdg_surface) catch {
-            std.log.err("failed to allocate xdg popup node", .{});
+            owm.log.err("failed to allocate xdg popup node", .{});
             return;
         };
         xdg_surface.data = scene_tree;
 
-        const popup = try owm.allocator.create(Popup);
-        errdefer owm.allocator.destroy(popup);
+        const popup = try owm.c_alloc.create(Popup);
+        errdefer owm.c_alloc.destroy(popup);
 
         popup.* = .{
             .wlr_xdg_popup = wlr_xdg_popup,
@@ -52,5 +52,5 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     popup.commit_listener.link.remove();
     popup.destroy_listener.link.remove();
 
-    owm.allocator.destroy(popup);
+    owm.c_alloc.destroy(popup);
 }
