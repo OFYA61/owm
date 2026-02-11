@@ -9,7 +9,7 @@ pub fn init() anyerror!void {
     const alloc = std.heap.page_allocator;
     log = try logly.Logger.init(std.heap.page_allocator);
 
-    const file_name = try std.fmt.allocPrint(alloc, "logs/log-{d}.log", .{std.time.milliTimestamp()});
+    const file_name = try std.fmt.allocPrint(alloc, "logs/log-{d}.log", .{std.time.timestamp()});
 
     var config = logly.Config.default();
     if (builtin.mode == .Debug) {
