@@ -34,11 +34,11 @@ const OutputConfig = struct {
     const Arrangement = struct {
         displays: [][]const u8,
         order: []Order,
-    };
 
-    const Order = struct {
-        id: []const u8,
-        order: u32,
+        const Order = struct {
+            id: []const u8,
+            order: u32,
+        };
     };
 
     fn init(alloc: std.mem.Allocator) anyerror!std.json.Parsed(OutputConfig) {
