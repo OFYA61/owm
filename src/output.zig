@@ -9,8 +9,11 @@ const owm = @import("owm.zig");
 /// Represents a display output in the Wayland compositor.
 /// Manages output geometry, frame callbacks, state requests, and destruction events.
 pub const Output = struct {
+    id: []u8,
     server: *owm.Server,
     wlr_output: *wlr.Output,
+    layout_output: ?*wlr.OutputLayout.Output = null,
+    scene_output: ?*wlr.SceneOutput = null,
     geom: wlr.Box,
     link: wl.list.Link = undefined,
 
@@ -18,13 +21,13 @@ pub const Output = struct {
     request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
     destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
-    pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!void {
-        const owm_output = try owm.c_alloc.create(Output);
-        errdefer owm.c_alloc.destroy(owm_output);
+    pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!*Output {
+        const output = try owm.c_alloc.create(Output);
+        errdefer owm.c_alloc.destroy(output);
 
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
             owm.log.err("Failed to initialize render with allocator and renderer on new output", .{});
-            return;
+            return error.FailedToInitRendererForOutput;
         }
 
         var state = wlr.Output.State.init();
@@ -36,32 +39,43 @@ pub const Output = struct {
         }
         if (!wlr_output.commitState(&state)) {
             owm.log.err("Failed to commit state for new output", .{});
-            return;
+            return error.FailedToCommitInitialStateForOutput;
         }
 
-        // Add the new display to the right of all the other displays
-        const layout_output = try server.wlr_output_layout.addAuto(wlr_output);
-        const scene_output = try server.wlr_scene.createSceneOutput(wlr_output); // Add a viewport for the output to the scene graph.
-        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+        const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
+            std.mem.span(wlr_output.name),
+            std.mem.span(wlr_output.model orelse ""),
+            std.mem.span(wlr_output.serial orelse ""),
+        });
 
         const geom = wlr.Box{
-            .x = layout_output.x,
-            .y = layout_output.y,
+            .x = 0,
+            .y = 0,
             .width = wlr_output.width,
             .height = wlr_output.height,
         };
 
-        owm_output.* = .{
+        output.* = .{
+            .id = id,
             .server = server,
             .wlr_output = wlr_output,
             .geom = geom,
         };
 
-        wlr_output.events.frame.add(&owm_output.frame_listener);
-        wlr_output.events.request_state.add(&owm_output.request_state_listener);
-        wlr_output.events.destroy.add(&owm_output.destroy_listener);
+        wlr_output.events.frame.add(&output.frame_listener);
+        wlr_output.events.request_state.add(&output.request_state_listener);
+        wlr_output.events.destroy.add(&output.destroy_listener);
 
-        server.outputs.append(owm_output);
+        server.outputs.append(output);
+
+        return output;
+    }
+
+    pub fn setLayout(self: *Output, layout_output: *wlr.OutputLayout.Output, scene_output: *wlr.SceneOutput) void {
+        self.geom.x = layout_output.x;
+        self.geom.y = layout_output.y;
+        self.layout_output = layout_output;
+        self.scene_output = scene_output;
     }
 };
 

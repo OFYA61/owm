@@ -136,7 +136,9 @@ pub const Server = struct {
 
     pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
         switch (@intFromEnum(key)) {
-            xkb.Keysym.Escape => self.wl_server.terminate(),
+            xkb.Keysym.Escape => {
+                self.wl_server.terminate();
+            },
             xkb.Keysym.t => {
                 self.spawnChild("ghostty") catch {
                     owm.log.err("Failed to spawn cosmic-term", .{});
@@ -304,11 +306,21 @@ pub const Server = struct {
     /// Called when a new display is discovered
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
-        owm.Output.create(server, wlr_output) catch {
+        const output = owm.Output.create(server, wlr_output) catch {
             owm.log.err("Failed to allocate new output", .{});
             wlr_output.destroy();
             return;
         };
+
+        // Add the new display to the right of all the other displays
+        const layout_output = server.wlr_output_layout.addAuto(wlr_output) catch {
+            return;
+        };
+        const scene_output = server.wlr_scene.createSceneOutput(wlr_output) catch {
+            return;
+        }; // Add a viewport for the output to the scene graph.
+        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+        output.setLayout(layout_output, scene_output);
     }
 
     /// Called when a client creates a new toplevel (app window)

@@ -1,4 +1,5 @@
 pub const c_alloc = @import("utils.zig").allocator;
+pub const alloc = @import("std").heap.page_allocator;
 
 // pub var log: *@import("logly").Logger = undefined;
 pub const log = @import("log.zig");
