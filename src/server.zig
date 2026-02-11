@@ -312,6 +312,16 @@ pub const Server = struct {
             return;
         };
 
+        owm.log.info("New output: {s}", .{output.id}, @src());
+        // var output_iter = server.outputs.iterator(.forward);
+        // while (output_iter.next()) |o| {
+        //     if (o == output) {
+        //         continue;
+        //     }
+        //     server.wlr_output_layout.remove(o.wlr_output);
+        //     // o.scene_output.?.link.remove();
+        // }
+
         // Add the new display to the right of all the other displays
         const layout_output = server.wlr_output_layout.addAuto(wlr_output) catch {
             return;

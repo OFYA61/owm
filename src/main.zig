@@ -1,8 +1,10 @@
 const owm = @import("owm.zig");
 
+const config = @import("config.zig");
+
 pub fn main() anyerror!void {
-    try owm.log.init();
-    defer owm.log.deinit();
+    try owm.init();
+    defer owm.deinit();
 
     var server: owm.Server = undefined;
     try server.init();

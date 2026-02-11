@@ -5,7 +5,7 @@ const logly = @import("logly");
 
 const MAX_LOG_FILE_COUNT = 5;
 
-pub var log: *logly.Logger = undefined;
+var log: *logly.Logger = undefined;
 
 pub fn init() anyerror!void {
     const alloc = std.heap.page_allocator;
@@ -89,7 +89,9 @@ pub fn debug(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLo
 }
 
 pub fn info(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
-    log.infof(fmt, args, src) catch unreachable;
+    log.infof(fmt, args, src) catch |e| {
+        std.debug.print("{}", .{e});
+    };
 }
 
 pub fn err(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
