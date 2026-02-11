@@ -6,7 +6,10 @@ const logly = @import("logly");
 pub var log: *logly.Logger = undefined;
 
 pub fn init() anyerror!void {
+    const alloc = std.heap.page_allocator;
     log = try logly.Logger.init(std.heap.page_allocator);
+
+    const file_name = try std.fmt.allocPrint(alloc, "logs/log-{d}.log", .{std.time.milliTimestamp()});
 
     var config = logly.Config.default();
     if (builtin.mode == .Debug) {
@@ -22,7 +25,7 @@ pub fn init() anyerror!void {
     log.configure(config);
 
     _ = try log.add(.{
-        .path = "logs/owm.log",
+        .path = file_name,
         .rotation = "minutely",
         .retention = 60 * 24 * 7,
         .color = false,
