@@ -211,6 +211,12 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         toplevel.setPos(box.x, box.y);
+        if (toplevel.border_rect) |border_rect| {
+            border_rect.setSize(
+                box.width + FOCUS_BORDER_SIZE_DIFF,
+                box.height + FOCUS_BORDER_SIZE_DIFF,
+            );
+        }
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
     } else {
         const output_geom = toplevel.current_output.geom;
