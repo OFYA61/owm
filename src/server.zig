@@ -322,30 +322,42 @@ pub const Server = struct {
         var output_arrangement = owm.config.output().findArrangementForOutputs(&outputs);
 
         if (output_arrangement) |*arrangement| {
-            owm.log.info("Output arrangement - FOUND", .{}, @src());
+            owm.log.info("Output arrangement found, setting up displays according to it", .{}, @src());
 
-            const lessThan = struct {
-                pub fn call(
-                    _: void,
-                    left: owm.config.OutputConfig.Arrangement.Order,
-                    right: owm.config.OutputConfig.Arrangement.Order,
-                ) bool {
-                    return left.order < right.order;
-                }
-            }.call;
-
-            std.sort.insertion(owm.config.OutputConfig.Arrangement.Order, arrangement.order, {}, lessThan);
-            var lx: c_int = 0;
-            for (arrangement.order) |order| {
-                owm.log.info("Output arrangement - Setting output {s} - New X {d}", .{ order.id, lx }, @src());
+            for (arrangement.displays) |*display| {
                 var output_to_modify: ?*owm.Output = null;
                 for (outputs.items) |output| {
-                    if (std.mem.eql(u8, output.id, order.id)) {
+                    if (std.mem.eql(u8, output.id, display.id)) {
                         output_to_modify = output;
                     }
                 }
-                output_to_modify.?.setLayoutPosition(lx, 0);
-                lx += output_to_modify.?.wlr_output.width;
+
+                if (!display.active) {
+                    owm.log.info("Disabling output {s}", .{display.id}, @src());
+                    output_to_modify.?.disableOutput() catch |err| {
+                        owm.log.err("Failed to disable output {}", .{err}, @src());
+                    };
+                    continue;
+                }
+
+                owm.log.info(
+                    "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
+                    .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
+                    @src(),
+                );
+
+                output_to_modify.?.setModeAndPos(
+                    display.x,
+                    display.y,
+                    owm.Output.Mode{
+                        .width = display.width,
+                        .height = display.height,
+                        .refresh = display.refresh,
+                    },
+                ) catch |err| {
+                    owm.log.err("Failed to set mode and pos for output {s}: {}", .{ display.id, err }, @src());
+                    continue;
+                };
             }
         }
     }

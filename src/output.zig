@@ -21,32 +21,55 @@ pub const Output = struct {
     request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
     destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
-    pub fn create(server: *owm.Server, wlr_output: *wlr.Output) anyerror!*Output {
+    pub const Mode = struct {
+        width: i32,
+        height: i32,
+        refresh: i32,
+    };
+
+    pub const Error = error{
+        CommitState,
+        InitRenderer,
+        AddOutputLayout,
+        CreateSceneOutput,
+        ModeDoesNotExist,
+    };
+    const Anyerror = Error || anyerror;
+
+    pub fn create(server: *owm.Server, wlr_output: *wlr.Output) Anyerror!*Output {
         const output = try owm.c_alloc.create(Output);
         errdefer owm.c_alloc.destroy(output);
 
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
             owm.log.err("Failed to initialize render with allocator and renderer on new output", .{}, @src());
-            return error.FailedToInitializeRenderer;
+            return Error.InitRenderer;
         }
 
         var state = wlr.Output.State.init();
         defer state.finish();
         state.setEnabled(true);
         if (wlr_output.preferredMode()) |mode| {
-            owm.log.info("Output has the preferred mode {}x{} {}Hz", .{ mode.width, mode.height, mode.refresh }, @src());
+            owm.log.info(
+                "Output has the preferred mode {}x{} {}Hz",
+                .{
+                    mode.width,
+                    mode.height,
+                    @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(mode.refresh)) / 1000))),
+                },
+                @src(),
+            );
             state.setMode(mode);
         }
         if (!wlr_output.commitState(&state)) {
             owm.log.err("Failed to commit state for new output", .{}, @src());
-            return error.FailedToCommitState;
+            return Error.CommitState;
         }
 
         const layout_output = server.wlr_output_layout.addAuto(wlr_output) catch {
-            return error.FailedToAutoAddToWlrOutputLayout;
+            return Error.AddOutputLayout;
         };
         const scene_output = server.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
-            return error.FailedtoCreateSceneOutput;
+            return Error.CreateSceneOutput;
         };
         server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
@@ -81,11 +104,49 @@ pub const Output = struct {
         return output;
     }
 
-    pub fn setLayoutPosition(self: *Output, new_x: c_int, new_y: c_int) void {
-        self.layout_output = self.server.wlr_output_layout.add(self.wlr_output, new_x, new_y) catch unreachable;
+    pub fn disableOutput(self: *Output) Error!void {
+        var state = wlr.Output.State.init();
+        defer state.finish();
+        state.setEnabled(false);
+        if (!self.wlr_output.commitState(&state)) {
+            owm.log.err("Failed to commit state for output {s}", .{self.id}, @src());
+            return Error.CommitState;
+        }
+        self.server.wlr_output_layout.remove(self.wlr_output);
+    }
+
+    pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
+        var state = wlr.Output.State.init();
+        defer state.finish();
+        state.setEnabled(true);
+
+        // Find the requsted mode from the available modes
+        var modes_iter = self.wlr_output.modes.iterator(.forward);
+        var mode: ?*wlr.Output.Mode = null;
+        while (modes_iter.next()) |m| {
+            if (m.width == new_mode.width and m.height == new_mode.height and
+                new_mode.refresh == @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(m.refresh)) / 1000))))
+            {
+                mode = m;
+                break;
+            }
+        }
+        if (mode == null) {
+            owm.log.err("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh }, @src());
+            return Error.ModeDoesNotExist;
+        }
+        state.setMode(mode.?);
+        if (!self.wlr_output.commitState(&state)) {
+            owm.log.err("Failed to commit state for output {s}", .{self.id}, @src());
+            return Error.CommitState;
+        }
+
+        const x = @as(c_int, new_x);
+        const y = @as(c_int, new_y);
+        self.layout_output = self.server.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
         self.geom = wlr.Box{
-            .x = new_x,
-            .y = new_y,
+            .x = x,
+            .y = y,
             .width = self.wlr_output.width,
             .height = self.wlr_output.height,
         };

@@ -32,12 +32,16 @@ pub const OutputConfig = struct {
     arrangements: []Arrangement,
 
     pub const Arrangement = struct {
-        displays: [][]const u8,
-        order: []Order,
+        displays: []Displays,
 
-        pub const Order = struct {
+        pub const Displays = struct {
             id: []const u8,
-            order: u32,
+            width: i32,
+            height: i32,
+            refresh: i32,
+            x: i32,
+            y: i32,
+            active: bool,
         };
     };
 
@@ -80,7 +84,7 @@ pub const OutputConfig = struct {
             for (outputs.items) |o| {
                 var found_output = false;
                 for (arrangement.displays) |display| {
-                    if (std.mem.eql(u8, o.id, display)) {
+                    if (std.mem.eql(u8, o.id, display.id)) {
                         found_output = true;
                         break;
                     }
