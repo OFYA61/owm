@@ -306,31 +306,48 @@ pub const Server = struct {
     /// Called when a new display is discovered
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
-        const output = owm.Output.create(server, wlr_output) catch {
+
+        _ = owm.Output.create(server, wlr_output) catch {
             owm.log.err("Failed to allocate new output", .{}, @src());
             wlr_output.destroy();
             return;
         };
 
-        owm.log.info("New output: {s}", .{output.id}, @src());
-        // var output_iter = server.outputs.iterator(.forward);
-        // while (output_iter.next()) |o| {
-        //     if (o == output) {
-        //         continue;
-        //     }
-        //     server.wlr_output_layout.remove(o.wlr_output);
-        //     // o.scene_output.?.link.remove();
-        // }
+        var outputs: std.ArrayList(*owm.Output) = .empty;
+        var output_iter = server.outputs.iterator(.forward);
+        while (output_iter.next()) |it| {
+            outputs.append(owm.alloc, it) catch unreachable;
+        }
 
-        // Add the new display to the right of all the other displays
-        const layout_output = server.wlr_output_layout.addAuto(wlr_output) catch {
-            return;
-        };
-        const scene_output = server.wlr_scene.createSceneOutput(wlr_output) catch {
-            return;
-        }; // Add a viewport for the output to the scene graph.
-        server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
-        output.setLayout(layout_output, scene_output);
+        var output_arrangement = owm.config.output().findArrangementForOutputs(&outputs);
+
+        if (output_arrangement) |*arrangement| {
+            owm.log.info("Output arrangement - FOUND", .{}, @src());
+
+            const lessThan = struct {
+                pub fn call(
+                    _: void,
+                    left: owm.config.OutputConfig.Arrangement.Order,
+                    right: owm.config.OutputConfig.Arrangement.Order,
+                ) bool {
+                    return left.order < right.order;
+                }
+            }.call;
+
+            std.sort.insertion(owm.config.OutputConfig.Arrangement.Order, arrangement.order, {}, lessThan);
+            var lx: c_int = 0;
+            for (arrangement.order) |order| {
+                owm.log.info("Output arrangement - Setting output {s} - New X {d}", .{ order.id, lx }, @src());
+                var output_to_modify: ?*owm.Output = null;
+                for (outputs.items) |output| {
+                    if (std.mem.eql(u8, output.id, order.id)) {
+                        output_to_modify = output;
+                    }
+                }
+                output_to_modify.?.setLayoutPosition(lx, 0);
+                lx += output_to_modify.?.wlr_output.width;
+            }
+        }
     }
 
     /// Called when a client creates a new toplevel (app window)

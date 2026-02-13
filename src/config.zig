@@ -12,11 +12,11 @@ pub fn deinit() void {
     config.output.deinit();
 }
 
-pub fn output() OutputConfig {
-    return config.output.value;
+pub fn output() *OutputConfig {
+    return &config.output.value;
 }
 
-const Config = struct {
+pub const Config = struct {
     output: std.json.Parsed(OutputConfig),
 
     pub fn init() anyerror!Config {
@@ -28,14 +28,14 @@ const Config = struct {
     }
 };
 
-const OutputConfig = struct {
+pub const OutputConfig = struct {
     arrangements: []Arrangement,
 
-    const Arrangement = struct {
+    pub const Arrangement = struct {
         displays: [][]const u8,
         order: []Order,
 
-        const Order = struct {
+        pub const Order = struct {
             id: []const u8,
             order: u32,
         };
@@ -69,5 +69,31 @@ const OutputConfig = struct {
             owm.log.err("Failed to parse output config: {}", .{err}, @src());
             return err;
         };
+    }
+
+    pub fn findArrangementForOutputs(self: *OutputConfig, outputs: *std.ArrayList(*owm.Output)) ?Arrangement {
+        for (self.arrangements) |arrangement| {
+            if (arrangement.displays.len != outputs.items.len) {
+                continue;
+            }
+            var found_arrangement = true;
+            for (outputs.items) |o| {
+                var found_output = false;
+                for (arrangement.displays) |display| {
+                    if (std.mem.eql(u8, o.id, display)) {
+                        found_output = true;
+                        break;
+                    }
+                }
+                if (!found_output) {
+                    found_arrangement = false;
+                    break;
+                }
+            }
+            if (found_arrangement) {
+                return arrangement;
+            }
+        }
+        return null;
     }
 };
