@@ -9,7 +9,7 @@ pub fn init() anyerror!void {
 }
 
 pub fn deinit() void {
-    config.output.deinit();
+    config.deinit();
 }
 
 pub fn output() *OutputConfig {
@@ -19,12 +19,16 @@ pub fn output() *OutputConfig {
 pub const Config = struct {
     output: std.json.Parsed(OutputConfig),
 
-    pub fn init() anyerror!Config {
+    fn init() anyerror!Config {
         const alloc = std.heap.page_allocator;
 
         return .{
             .output = try OutputConfig.init(alloc),
         };
+    }
+
+    fn deinit(self: *Config) void {
+        self.output.deinit();
     }
 };
 

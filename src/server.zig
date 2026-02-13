@@ -319,9 +319,7 @@ pub const Server = struct {
             outputs.append(owm.alloc, it) catch unreachable;
         }
 
-        var output_arrangement = owm.config.output().findArrangementForOutputs(&outputs);
-
-        if (output_arrangement) |*arrangement| {
+        if (owm.config.output().findArrangementForOutputs(&outputs)) |*arrangement| {
             owm.log.info("Output arrangement found, setting up displays according to it", .{}, @src());
 
             for (arrangement.displays) |*display| {
