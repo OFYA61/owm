@@ -5,7 +5,7 @@ zig build run
 ## Commands
 
 Commands:
-- Alt + Exc: Terminate
+- Alt + Esc: Terminate
 - Alt + t: Open ghostty terminal emulator
 - Alt + f: Open cosmic-files
 
