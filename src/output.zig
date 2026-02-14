@@ -151,6 +151,17 @@ pub const Output = struct {
             .height = self.wlr_output.height,
         };
     }
+
+    pub fn getRefresh(self: *Output) i32 {
+        return @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(self.wlr_output.current_mode.?.refresh)) / 1000)));
+    }
+
+    pub fn isDisplay(self: *Output) bool {
+        if (self.wlr_output.current_mode) |_| {
+            return true;
+        }
+        return false;
+    }
 };
 
 /// Called every time when an output is ready to display a farme, generally at the refresh rate

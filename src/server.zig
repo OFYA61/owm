@@ -307,11 +307,15 @@ pub const Server = struct {
     fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
 
-        _ = owm.Output.create(server, wlr_output) catch {
+        const new_output = owm.Output.create(server, wlr_output) catch {
             owm.log.err("Failed to allocate new output", .{}, @src());
             wlr_output.destroy();
             return;
         };
+
+        if (!new_output.isDisplay()) {
+            return;
+        }
 
         var outputs: std.ArrayList(*owm.Output) = .empty;
         var output_iter = server.outputs.iterator(.forward);
@@ -322,7 +326,7 @@ pub const Server = struct {
         if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
             owm.log.info("Output arrangement found, setting up displays according to it", .{}, @src());
 
-            for (arrangement.displays) |*display| {
+            for (arrangement.displays.items) |*display| {
                 var output_to_modify: ?*owm.Output = null;
                 for (outputs.items) |output| {
                     if (std.mem.eql(u8, output.id, display.id)) {
@@ -358,7 +362,31 @@ pub const Server = struct {
                 };
             }
         } else {
-            // Store new output arrangement on config
+            var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
+                owm.log.err("Failed to initialize memory for new arrangement", .{}, @src());
+                return;
+            };
+
+            for (outputs.items) |output| {
+                displays.append(owm.alloc, owm.config.OutputConfig.Arrangement.Display{
+                    .id = output.id,
+                    .width = output.geom.width,
+                    .height = output.geom.height,
+                    .refresh = output.getRefresh(),
+                    .x = output.geom.x,
+                    .y = output.geom.y,
+                    .active = output.wlr_output.enabled,
+                }) catch {
+                    owm.log.err("Failed to append display definition", .{}, @src());
+                    displays.deinit(owm.alloc);
+                    return;
+                };
+            }
+            const new_arrangement = owm.config.OutputConfig.Arrangement{ .displays = displays };
+            owm.config.getOutput().addNewArrangement(new_arrangement) catch {
+                displays.deinit(owm.alloc);
+                return;
+            };
         }
     }
 
