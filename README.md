@@ -9,7 +9,7 @@ Commands:
 - Alt + t: Open ghostty terminal emulator
 - Alt + f: Open cosmic-files
 
-Modify the keybinds in `handleKeybind` foudn in `server.zig`.
+Modify the keybinds in `handleKeybind` found in `server.zig`.
 
 ## Logs
 
