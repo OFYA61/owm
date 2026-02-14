@@ -6,7 +6,6 @@ var config: Config = undefined;
 pub const OutputConfig = @import("Output.zig").OutputConfig;
 
 pub const Config = struct {
-    // output: std.json.Parsed(OutputConfig),
     output: OutputConfig,
 
     fn init() anyerror!Config {
