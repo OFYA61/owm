@@ -1,7 +1,5 @@
 const owm = @import("owm.zig");
 
-const config = @import("config.zig");
-
 pub fn main() anyerror!void {
     try owm.init();
     defer owm.deinit();

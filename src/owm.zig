@@ -2,7 +2,8 @@ pub const c_alloc = @import("utils.zig").allocator;
 pub const alloc = @import("std").heap.page_allocator;
 
 pub const log = @import("log.zig");
-pub const config = @import("config.zig");
+// pub const config = @import("config.zig");
+pub const config = @import("config/config.zig");
 
 pub const Keyboard = @import("input.zig").Keyboard;
 pub const Output = @import("output.zig").Output;

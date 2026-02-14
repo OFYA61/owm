@@ -3,16 +3,18 @@ const builtin = @import("builtin");
 
 const logly = @import("logly");
 
-const MAX_LOG_FILE_COUNT = 5;
+const MAX_LOG_FILE_COUNT = 48;
 
 var log: *logly.Logger = undefined;
 
 pub fn init() anyerror!void {
     const alloc = std.heap.page_allocator;
-    try cleanupOldLogs(alloc);
+    const appDataDir = try std.fs.getAppDataDir(alloc, "owm");
+    try cleanupOldLogs(alloc, appDataDir);
     log = try logly.Logger.init(std.heap.page_allocator);
 
     const file_name = try std.fmt.allocPrint(alloc, "logs/log-{d}.log", .{std.time.milliTimestamp()});
+    const full_log_file_path = try std.fs.path.join(alloc, &.{ appDataDir, file_name });
 
     var config = logly.Config.default();
     if (builtin.mode == .Debug) {
@@ -30,9 +32,9 @@ pub fn init() anyerror!void {
     log.configure(config);
 
     _ = try log.add(.{
-        .path = file_name,
+        .path = full_log_file_path,
         .rotation = "hourly",
-        .retention = 1,
+        .retention = 24,
         .color = false,
     });
 }
@@ -42,8 +44,9 @@ const LogFile = struct {
     mtime: i128,
 };
 
-fn cleanupOldLogs(alloc: std.mem.Allocator) !void {
-    var dir = try std.fs.cwd().openDir("logs", .{ .iterate = true });
+fn cleanupOldLogs(alloc: std.mem.Allocator, appDataDir: []const u8) !void {
+    const dir_path = try std.fs.path.join(alloc, &.{ appDataDir, "logs" });
+    var dir = try std.fs.cwd().makeOpenPath(dir_path, .{ .iterate = true });
     defer dir.close();
 
     var files: std.ArrayList(LogFile) = .empty;

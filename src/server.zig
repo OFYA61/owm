@@ -319,7 +319,7 @@ pub const Server = struct {
             outputs.append(owm.alloc, it) catch unreachable;
         }
 
-        if (owm.config.output().findArrangementForOutputs(&outputs)) |*arrangement| {
+        if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
             owm.log.info("Output arrangement found, setting up displays according to it", .{}, @src());
 
             for (arrangement.displays) |*display| {
@@ -357,6 +357,8 @@ pub const Server = struct {
                     continue;
                 };
             }
+        } else {
+            // Store new output arrangement on config
         }
     }
 
