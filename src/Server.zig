@@ -521,10 +521,13 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
 fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
     _ = listener;
     owm.log.infof(
-        "New layer surface reuquest: namespace={s} anchor={} size=({}, {}) margin=({}, {}, {}, {})",
+        "New layer surface reuquest: namespace={s} anchor=({}, {}, {}, {}) size=({}, {}) margin=({}, {}, {}, {})",
         .{
             wlr_layer_surface.namespace,
-            wlr_layer_surface.pending.anchor,
+            wlr_layer_surface.pending.anchor.top,
+            wlr_layer_surface.pending.anchor.right,
+            wlr_layer_surface.pending.anchor.bottom,
+            wlr_layer_surface.pending.anchor.left,
             wlr_layer_surface.pending.desired_width,
             wlr_layer_surface.pending.desired_height,
             wlr_layer_surface.pending.margin.top,

@@ -12,11 +12,14 @@ var log: *logly.Logger = undefined;
 pub fn init() anyerror!void {
     const alloc = std.heap.page_allocator;
     const appDataDir = try std.fs.getAppDataDir(alloc, "owm");
+    defer alloc.free(appDataDir);
     try cleanupOldLogs(alloc, appDataDir);
     log = try logly.Logger.init(std.heap.page_allocator);
 
     const file_name = try std.fmt.allocPrint(alloc, "logs/log-{d}.log", .{std.time.milliTimestamp()});
+    defer alloc.free(file_name);
     const full_log_file_path = try std.fs.path.join(alloc, &.{ appDataDir, file_name });
+    defer alloc.free(full_log_file_path);
 
     var config = logly.Config.default();
     config.show_filename = false;
