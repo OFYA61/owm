@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const owm = b.addExecutable(.{
+    const owm_exe = b.addExecutable(.{
         .name = "owm",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
@@ -53,21 +53,39 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    owm.linkLibC();
+    const prefix = switch (optimize) {
+        .Debug => "debug",
+        .ReleaseSafe => "release-safe",
+        .ReleaseFast => "release-fast",
+        .ReleaseSmall => "release-small",
+    };
+    std.log.info("{s}", .{prefix});
 
-    owm.root_module.addImport("wayland", wayland);
-    owm.root_module.addImport("xkbcommon", xkbcommon);
-    owm.root_module.addImport("wlroots", wlroots);
-    owm.root_module.addImport("pixman", pixman);
-    owm.root_module.addImport("logly", logly.module("logly"));
+    owm_exe.linkLibC();
 
-    owm.linkSystemLibrary("wayland-server");
-    owm.linkSystemLibrary("xkbcommon");
-    owm.linkSystemLibrary("pixman-1");
+    owm_exe.root_module.addImport("wayland", wayland);
+    owm_exe.root_module.addImport("xkbcommon", xkbcommon);
+    owm_exe.root_module.addImport("wlroots", wlroots);
+    owm_exe.root_module.addImport("pixman", pixman);
+    owm_exe.root_module.addImport("logly", logly.module("logly"));
 
-    b.installArtifact(owm);
+    owm_exe.linkSystemLibrary("wayland-server");
+    owm_exe.linkSystemLibrary("xkbcommon");
+    owm_exe.linkSystemLibrary("pixman-1");
 
-    const run_cmd = b.addRunArtifact(owm);
+    const owm_install = b.addInstallArtifact(
+        owm_exe,
+        .{
+            .dest_dir = .{
+                .override = .{
+                    .custom = prefix,
+                },
+            },
+        },
+    );
+    b.default_step.dependOn(&owm_install.step);
+
+    const run_cmd = b.addRunArtifact(owm_exe);
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
