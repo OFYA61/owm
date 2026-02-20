@@ -22,7 +22,6 @@ pub const Toplevel = struct {
     y: i32 = 0,
     current_output: *owm.Output,
     box_before_maximize: wlr.Box,
-    border_rect: ?*wlr.SceneRect = null,
 
     map_listener: wl.Listener(void) = .init(mapCallback),
     unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -74,23 +73,7 @@ pub const Toplevel = struct {
     pub fn setFocus(self: *Toplevel, focus: bool) void {
         _ = self.wlr_xdg_toplevel.setActivated(focus);
         if (focus) {
-            const geom = self.getGeom();
-
             self.wlr_scene_tree.node.raiseToTop();
-
-            const border_rect = self.wlr_scene_tree.createSceneRect(
-                geom.width + FOCUS_BORDER_SIZE_DIFF,
-                geom.height + FOCUS_BORDER_SIZE_DIFF,
-                &FOCUS_BORDER_COLOR,
-            ) catch {
-                return;
-            };
-            border_rect.node.setPosition(-FOCUS_BORDER_WIDTH, -FOCUS_BORDER_WIDTH);
-            border_rect.node.lowerToBottom();
-            self.border_rect = border_rect;
-        } else {
-            self.border_rect.?.node.destroy();
-            self.border_rect = null;
         }
     }
 
@@ -135,12 +118,6 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
     }
     if (toplevel.server.cursor_mode != .resize) {
         return;
-    }
-    if (toplevel.border_rect) |border_rect| {
-        border_rect.setSize(
-            toplevel.wlr_xdg_toplevel.base.geometry.width + FOCUS_BORDER_SIZE_DIFF,
-            toplevel.wlr_xdg_toplevel.base.geometry.height + FOCUS_BORDER_SIZE_DIFF,
-        );
     }
 }
 
@@ -211,12 +188,6 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         toplevel.setPos(box.x, box.y);
-        if (toplevel.border_rect) |border_rect| {
-            border_rect.setSize(
-                box.width + FOCUS_BORDER_SIZE_DIFF,
-                box.height + FOCUS_BORDER_SIZE_DIFF,
-            );
-        }
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
     } else {
         const output_geom = toplevel.current_output.geom;

@@ -92,9 +92,7 @@ pub fn debug(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLo
 }
 
 pub fn info(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
-    log.infof(fmt, args, src) catch |e| {
-        std.debug.print("{}", .{e});
-    };
+    log.infof(fmt, args, src) catch unreachable;
 }
 
 pub fn err(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
