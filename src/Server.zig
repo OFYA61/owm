@@ -25,6 +25,7 @@ outputs: wl.list.Head(owm.Output, .link) = undefined,
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
+layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 
 wlr_xdg_shell: *wlr.XdgShell,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
@@ -94,7 +95,6 @@ pub fn init(self: *Server) anyerror!void {
     _ = try wlr.XdgOutputManagerV1.create(self.wl_server, self.wlr_output_layout); // Protocol required by `waybar`
 
     self.outputs.init();
-
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
     self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
@@ -112,6 +112,7 @@ pub fn init(self: *Server) anyerror!void {
     wlr_cursor.events.axis.add(&self.cursor_axis_listener);
     wlr_cursor.events.frame.add(&self.cursor_frame_listener);
 
+    self.layer_surfaces.init();
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 }
 
@@ -519,7 +520,7 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
 }
 
 fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
-    _ = listener;
+    const server: *Server = @fieldParentPtr("new_layer_surface_listener", listener);
     owm.log.infof(
         "New layer surface reuquest: namespace={s} anchor=({}, {}, {}, {}) size=({}, {}) margin=({}, {}, {}, {})",
         .{
@@ -541,5 +542,9 @@ fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_laye
         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
     }
 
-    _ = owm.LayerSurface.create(wlr_layer_surface) catch {};
+    const new_layer_surface = owm.LayerSurface.create(wlr_layer_surface) catch {
+        owm.log.err("Failed to allocate new layer surface");
+        return;
+    };
+    server.layer_surfaces.append(new_layer_surface);
 }
