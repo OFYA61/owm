@@ -9,12 +9,9 @@ pub fn build(b: *std.Build) void {
     const scanner = Scanner.create(b, .{});
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
     scanner.addSystemProtocol("stable/tablet/tablet-v2.xml");
+    scanner.addCustomProtocol(b.path("./protocols/wlr-layer-shell-unstable-v1.xml"));
 
-    // Some of these versions may be out of date with what wlroots implements.
-    // This is not a problem in practice though as long it successfully compiles.
-    // These versions control Zig code generation and have no effect on anything internal
-    // to wlroots. Therefore, the only thing that can happen due to a version being too
-    // old is that tinywl fails to compile.
+    // Wayland protocolos
     scanner.generate("wl_compositor", 4);
     scanner.generate("wl_subcompositor", 1);
     scanner.generate("wl_shm", 1);
@@ -23,6 +20,9 @@ pub fn build(b: *std.Build) void {
     scanner.generate("wl_data_device_manager", 3);
     scanner.generate("xdg_wm_base", 2);
     scanner.generate("zwp_tablet_manager_v2", 1);
+
+    // Unstable wayland protocols
+    scanner.generate("zwlr_layer_shell_v1", 5);
 
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
@@ -53,13 +53,6 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const prefix = switch (optimize) {
-        .Debug => "debug",
-        .ReleaseSafe => "release-safe",
-        .ReleaseFast => "release-fast",
-        .ReleaseSmall => "release-small",
-    };
-
     owm_exe.linkLibC();
 
     owm_exe.root_module.addImport("wayland", wayland);
@@ -77,7 +70,12 @@ pub fn build(b: *std.Build) void {
         .{
             .dest_dir = .{
                 .override = .{
-                    .custom = prefix,
+                    .custom = switch (optimize) {
+                        .Debug => "debug",
+                        .ReleaseSafe => "release-safe",
+                        .ReleaseFast => "release-fast",
+                        .ReleaseSmall => "release-small",
+                    },
                 },
             },
         },

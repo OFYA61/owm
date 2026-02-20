@@ -10,6 +10,7 @@ pub const log = @import("log.zig");
 pub const config = @import("config/config.zig");
 
 pub const Keyboard = @import("Keyboard.zig");
+pub const LayerSurface = @import("LayerSurface.zig");
 pub const Output = @import("Output.zig");
 pub const Popup = @import("Popup.zig");
 pub const Toplevel = @import("Toplevel.zig");

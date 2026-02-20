@@ -23,6 +23,9 @@ wlr_renderer: *wlr.Renderer,
 wlr_output_layout: *wlr.OutputLayout,
 outputs: wl.list.Head(owm.Output, .link) = undefined,
 
+wlr_layer_shell_v1: *wlr.LayerShellV1,
+new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
+
 wlr_xdg_shell: *wlr.XdgShell,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
@@ -57,6 +60,7 @@ pub fn init(self: *Server) anyerror!void {
     const wlr_backend = try wlr.Backend.autocreate(event_loop, null); // Auto picks the backend (Wayland, X11, DRM+KSM)
     const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend); // Auto picks a renderer (Pixman, GLES2, Vulkan)
     const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
+    const wlr_layer_shell_v1 = try wlr.LayerShellV1.create(wl_server, 5); // Protocol for status bars
     const wlr_scene = try wlr.Scene.create(); // Abstraction that handles all rendering and damage tracking
     const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
@@ -72,6 +76,7 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_allocator = wlr_allocator,
         .wlr_scene = wlr_scene,
         .wlr_output_layout = wlr_output_layout,
+        .wlr_layer_shell_v1 = wlr_layer_shell_v1,
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .wlr_xdg_shell = wlr_xdg_shell,
         .wlr_seat = wlr_seat,
@@ -86,6 +91,7 @@ pub fn init(self: *Server) anyerror!void {
     _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer); // Allows clients to allocate surfaces
     _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
     _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
+    _ = try wlr.XdgOutputManagerV1.create(self.wl_server, self.wlr_output_layout); // Protocol required by `waybar`
 
     self.outputs.init();
 
@@ -105,10 +111,14 @@ pub fn init(self: *Server) anyerror!void {
     wlr_cursor.events.button.add(&self.cursor_button_listener);
     wlr_cursor.events.axis.add(&self.cursor_axis_listener);
     wlr_cursor.events.frame.add(&self.cursor_frame_listener);
+
+    wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 }
 
 pub fn deinit(self: *Server) void {
     self.wl_server.destroyClients();
+
+    self.new_layer_surface_listener.link.remove();
 
     self.new_input_listener.link.remove();
     self.new_output_listener.link.remove();
@@ -506,4 +516,27 @@ fn cursorAxisCallback(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *w
 fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
     const server: *Server = @fieldParentPtr("cursor_frame_listener", listener);
     server.wlr_seat.pointerNotifyFrame();
+}
+
+fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
+    _ = listener;
+    owm.log.infof(
+        "New layer surface reuquest: namespace={s} anchor={} size=({}, {}) margin=({}, {}, {}, {})",
+        .{
+            wlr_layer_surface.namespace,
+            wlr_layer_surface.pending.anchor,
+            wlr_layer_surface.pending.desired_width,
+            wlr_layer_surface.pending.desired_height,
+            wlr_layer_surface.pending.margin.top,
+            wlr_layer_surface.pending.margin.right,
+            wlr_layer_surface.pending.margin.bottom,
+            wlr_layer_surface.pending.margin.left,
+        },
+    );
+
+    if (wlr_layer_surface.output == null) {
+        wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
+    }
+
+    _ = owm.LayerSurface.create(wlr_layer_surface) catch {};
 }
