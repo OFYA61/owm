@@ -6,6 +6,8 @@ const wlr = @import("wlroots");
 const owm = @import("owm.zig");
 
 wlr_layer_surface: *wlr.LayerSurfaceV1,
+output: *owm.Output,
+wlr_scene_layer_surface: *wlr.SceneLayerSurfaceV1,
 link: wl.list.Link = undefined,
 
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -18,8 +20,12 @@ pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) !*LayerSurface {
     const layer_shell = try owm.c_alloc.create(LayerSurface);
     errdefer owm.c_alloc.destroy(layer_shell);
 
+    const wlr_scene_layer_surface = try owm.server.wlr_scene.tree.createSceneLayerSurfaceV1(wlr_layer_surface);
+
     layer_shell.* = .{
+        .output = owm.server.outputs.first().?,
         .wlr_layer_surface = wlr_layer_surface,
+        .wlr_scene_layer_surface = wlr_scene_layer_surface,
     };
 
     wlr_layer_surface.surface.events.map.add(&layer_shell.map_listener);
@@ -46,7 +52,8 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
     _ = wlr_surface;
     const wlr_layer_surface = layer_surface.wlr_layer_surface;
     if (wlr_layer_surface.initial_commit) {
-        _ = wlr_layer_surface.configure(1000, 40);
+        const output_geom = layer_surface.output.geom;
+        _ = wlr_layer_surface.configure(@intCast(output_geom.width), 40);
     }
 }
 
