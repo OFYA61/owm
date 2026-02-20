@@ -17,18 +17,17 @@ pub fn init() anyerror!void {
     const full_log_file_path = try std.fs.path.join(alloc, &.{ appDataDir, file_name });
 
     var config = logly.Config.default();
+    config.show_filename = false;
+    config.show_function = false;
+    config.show_lineno = false;
+    config.show_time = true;
     if (builtin.mode == .Debug) {
         config.level = .debug;
         config.auto_flush = true;
-        config.show_filename = true;
-        config.show_lineno = true;
     } else {
         config.level = .info;
         config.auto_flush = false;
-        config.show_filename = false;
-        config.show_lineno = false;
     }
-    config.show_time = true;
     log.configure(config);
 
     _ = try log.add(.{
@@ -87,14 +86,26 @@ pub fn deinit() void {
     log.deinit();
 }
 
-pub fn debug(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
-    log.debugf(fmt, args, src) catch unreachable;
+pub fn debug(message: []const u8) void {
+    log.debug(message, null) catch unreachable;
 }
 
-pub fn info(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
-    log.infof(fmt, args, src) catch unreachable;
+pub fn debugf(comptime fmt: []const u8, args: anytype) void {
+    log.debugf(fmt, args, null) catch unreachable;
 }
 
-pub fn err(comptime fmt: []const u8, args: anytype, src: ?std.builtin.SourceLocation) void {
-    log.errf(fmt, args, src) catch unreachable;
+pub fn info(message: []const u8) void {
+    log.info(message, null) catch unreachable;
+}
+
+pub fn infof(comptime fmt: []const u8, args: anytype) void {
+    log.infof(fmt, args, null) catch unreachable;
+}
+
+pub fn err(message: []const u8) void {
+    log.err(message, null) catch unreachable;
+}
+
+pub fn errf(comptime fmt: []const u8, args: anytype) void {
+    log.errf(fmt, args, null) catch unreachable;
 }

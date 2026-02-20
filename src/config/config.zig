@@ -9,7 +9,7 @@ pub const Config = struct {
     output: OutputConfig,
 
     fn init() anyerror!Config {
-        owm.log.info("Config - Initializing", .{}, @src());
+        owm.log.info("Config - Initializing");
         return .{
             .output = OutputConfig.init() catch OutputConfig.defaultConfig(),
         };

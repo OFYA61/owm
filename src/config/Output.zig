@@ -87,7 +87,7 @@ pub const OutputConfig = struct {
     /// Use to add new output arrangements when an unknown output configuration has shown up
     pub fn addNewArrangement(self: *OutputConfig, new_arrangement: Arrangement) !void {
         self.arrangements.append(alloc, new_arrangement) catch |err| {
-            owm.log.err("Config - Output - Failed to add new arrangement {}", .{err}, @src());
+            owm.log.errf("Config - Output - Failed to add new arrangement {}", .{err});
             return err;
         };
 
@@ -111,7 +111,7 @@ pub const OutputConfig = struct {
 
         var output_config_raw = OutputConfigRaw{ .arrangements = raw_arrangements };
         output_config_raw.save() catch {
-            owm.log.err("Config - Output - Failed to save new config", .{}, @src());
+            owm.log.err("Config - Output - Failed to save new config");
         };
 
         for (raw_arrangements) |arr| {
@@ -140,29 +140,29 @@ const OutputConfigRaw = struct {
 
     pub fn init() anyerror!std.json.Parsed(OutputConfigRaw) {
         const file = openConfigFile(.read_only) catch |err| {
-            owm.log.err("Config - Output - Failed to open config file with error: {}, using default configuration", .{err}, @src());
+            owm.log.errf("Config - Output - Failed to open config file with error: {}, using default configuration", .{err});
             return err;
         };
         defer file.close();
 
         const file_end_pos = file.getEndPos() catch |err| {
-            owm.log.err("Config - Output - Failed to read config file with error: {}, using default configuration", .{err}, @src());
+            owm.log.errf("Config - Output - Failed to read config file with error: {}, using default configuration", .{err});
             return err;
         };
         // Let `Parsed.deinit()` handle cleaning up `file_contents`
         const file_contents = file.readToEndAlloc(alloc, file_end_pos) catch |err| {
-            owm.log.err("Config - Output - Failed to read config file with error: {}, using default configuration", .{err}, @src());
+            owm.log.errf("Config - Output - Failed to read config file with error: {}, using default configuration", .{err});
             return err;
         };
 
         return utils.parseJsonSlice(OutputConfigRaw, file_contents) catch |err| {
-            owm.log.err("Config - Output - Failed to parse output config with error: {}, using default configuration", .{err}, @src());
+            owm.log.errf("Config - Output - Failed to parse output config with error: {}, using default configuration", .{err});
             return err;
         };
     }
 
     pub fn save(self: *OutputConfigRaw) anyerror!void {
-        owm.log.info("Config - Output - Saving new config", .{}, @src());
+        owm.log.info("Config - Output - Saving new config");
         const json = std.fmt.allocPrint(
             alloc,
             "{f}",
@@ -171,11 +171,11 @@ const OutputConfigRaw = struct {
 
         var file = try openConfigFile(.write_only);
         try file.writeAll(json);
-        owm.log.info("Config - Output - Saved new config", .{}, @src());
+        owm.log.info("Config - Output - Saved new config");
     }
 
     fn openConfigFile(mode: std.fs.File.OpenMode) anyerror!std.fs.File {
-        owm.log.info("Config - Output - Attempting to open output.json", .{}, @src());
+        owm.log.info("Config - Output - Attempting to open output.json");
 
         const home = std.process.getEnvVarOwned(alloc, "HOME") catch {
             return error.MissingHomeEnvironmentVariable;
@@ -189,11 +189,11 @@ const OutputConfigRaw = struct {
 
         return std.fs.openFileAbsolute(full_path, .{ .mode = mode }) catch |err| {
             if (err != error.FileNotFound) {
-                owm.log.err("Config - Output - Unexpected error when trying to open output.json config file", .{}, @src());
+                owm.log.err("Config - Output - Unexpected error when trying to open output.json config file");
                 return err;
             }
 
-            owm.log.info("Config - Output - output.json does not exist, creating file with default config", .{}, @src());
+            owm.log.info("Config - Output - output.json does not exist, creating file with default config");
             const file = std.fs.createFileAbsolute(full_path, .{}) catch unreachable;
             _ = try file.write(defaultConfigJson());
             file.close();

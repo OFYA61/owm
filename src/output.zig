@@ -41,7 +41,7 @@ pub const Output = struct {
         errdefer owm.c_alloc.destroy(output);
 
         if (!wlr_output.initRender(server.wlr_allocator, server.wlr_renderer)) {
-            owm.log.err("Failed to initialize render with allocator and renderer on new output", .{}, @src());
+            owm.log.err("Failed to initialize render with allocator and renderer on new output");
             return Error.InitRenderer;
         }
 
@@ -50,33 +50,31 @@ pub const Output = struct {
         state.setEnabled(true);
         if (!wlr_output.modes.empty()) {
             var modes_iterator = wlr_output.modes.iterator(.forward);
-            owm.log.info("The output has the following modes:", .{}, @src());
+            owm.log.info("The output has the following modes:");
             while (modes_iterator.next()) |mode| {
-                owm.log.info(
+                owm.log.infof(
                     "\t- {}x{} {}Hz",
                     .{
                         mode.width,
                         mode.height,
                         @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(mode.refresh)) / 1000))),
                     },
-                    @src(),
                 );
             }
         }
         if (wlr_output.preferredMode()) |mode| {
-            owm.log.info(
+            owm.log.infof(
                 "Output has the preferred mode {}x{} {}Hz",
                 .{
                     mode.width,
                     mode.height,
                     @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(mode.refresh)) / 1000))),
                 },
-                @src(),
             );
             state.setMode(mode);
         }
         if (!wlr_output.commitState(&state)) {
-            owm.log.err("Failed to commit state for new output", .{}, @src());
+            owm.log.err("Failed to commit state for new output");
             return Error.CommitState;
         }
 
@@ -124,7 +122,7 @@ pub const Output = struct {
         defer state.finish();
         state.setEnabled(false);
         if (!self.wlr_output.commitState(&state)) {
-            owm.log.err("Failed to commit state for output {s}", .{self.id}, @src());
+            owm.log.errf("Failed to commit state for output {s}", .{self.id});
             return Error.CommitState;
         }
         self.server.wlr_output_layout.remove(self.wlr_output);
@@ -147,12 +145,12 @@ pub const Output = struct {
             }
         }
         if (mode == null) {
-            owm.log.err("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh }, @src());
+            owm.log.errf("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh });
             return Error.ModeDoesNotExist;
         }
         state.setMode(mode.?);
         if (!self.wlr_output.commitState(&state)) {
-            owm.log.err("Failed to commit state for output {s}", .{self.id}, @src());
+            owm.log.errf("Failed to commit state for output {s}", .{self.id});
             return Error.CommitState;
         }
 

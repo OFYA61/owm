@@ -59,7 +59,6 @@ pub fn build(b: *std.Build) void {
         .ReleaseFast => "release-fast",
         .ReleaseSmall => "release-small",
     };
-    std.log.info("{s}", .{prefix});
 
     owm_exe.linkLibC();
 

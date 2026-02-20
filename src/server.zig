@@ -130,7 +130,7 @@ pub const Server = struct {
 
     pub fn run(self: *Server) anyerror!void {
         try self.wlr_backend.start();
-        owm.log.info("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?}, @src());
+        owm.log.infof("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
         self.wl_server.run();
     }
 
@@ -141,17 +141,17 @@ pub const Server = struct {
             },
             xkb.Keysym.t => {
                 self.spawnChild("ghostty") catch {
-                    owm.log.err("Failed to spawn cosmic-term", .{}, @src());
+                    owm.log.err("Failed to spawn cosmic-term");
                 };
             },
             xkb.Keysym.f => {
                 self.spawnChild("cosmic-files") catch {
-                    owm.log.err("Failed to spawn cosmic-files", .{}, @src());
+                    owm.log.err("Failed to spawn cosmic-files");
                 };
             },
             xkb.Keysym.b => {
                 self.spawnChild("brave") catch {
-                    owm.log.err("Failed to spawm brave", .{}, @src());
+                    owm.log.err("Failed to spawm brave");
                 };
             },
             xkb.Keysym.m => {
@@ -318,7 +318,7 @@ pub const Server = struct {
         const server: *Server = @fieldParentPtr("new_output_listener", listener);
 
         const new_output = owm.Output.create(server, wlr_output) catch {
-            owm.log.err("Failed to allocate new output", .{}, @src());
+            owm.log.err("Failed to allocate new output");
             wlr_output.destroy();
             return;
         };
@@ -334,7 +334,7 @@ pub const Server = struct {
         }
 
         if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
-            owm.log.info("Output arrangement found, setting up displays according to it", .{}, @src());
+            owm.log.info("Output arrangement found, setting up displays according to it");
 
             for (arrangement.displays.items) |*display| {
                 var output_to_modify: ?*owm.Output = null;
@@ -345,17 +345,16 @@ pub const Server = struct {
                 }
 
                 if (!display.active) {
-                    owm.log.info("Disabling output {s}", .{display.id}, @src());
+                    owm.log.infof("Disabling output {s}", .{display.id});
                     output_to_modify.?.disableOutput() catch |err| {
-                        owm.log.err("Failed to disable output {}", .{err}, @src());
+                        owm.log.errf("Failed to disable output {}", .{err});
                     };
                     continue;
                 }
 
-                owm.log.info(
+                owm.log.infof(
                     "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
                     .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
-                    @src(),
                 );
 
                 output_to_modify.?.setModeAndPos(
@@ -367,13 +366,13 @@ pub const Server = struct {
                         .refresh = display.refresh,
                     },
                 ) catch |err| {
-                    owm.log.err("Failed to set mode and pos for output {s}: {}", .{ display.id, err }, @src());
+                    owm.log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
                     continue;
                 };
             }
         } else {
             var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
-                owm.log.err("Failed to initialize memory for new arrangement", .{}, @src());
+                owm.log.err("Failed to initialize memory for new arrangement");
                 return;
             };
 
@@ -387,7 +386,7 @@ pub const Server = struct {
                     .y = output.geom.y,
                     .active = output.wlr_output.enabled,
                 }) catch {
-                    owm.log.err("Failed to append display definition", .{}, @src());
+                    owm.log.err("Failed to append display definition");
                     displays.deinit(owm.alloc);
                     return;
                 };
@@ -404,7 +403,7 @@ pub const Server = struct {
     fn newXdgToplevelCallback(listener: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
         const server: *Server = @fieldParentPtr("new_toplevel_listener", listener);
         owm.Toplevel.create(server, wlr_xdg_toplevel) catch {
-            owm.log.err("Failed to allocate new toplevel", .{}, @src());
+            owm.log.err("Failed to allocate new toplevel");
             wlr_xdg_toplevel.sendClose();
             return;
         };
@@ -413,7 +412,7 @@ pub const Server = struct {
     /// Called when a client create a new popup
     fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
         owm.Popup.create(wlr_xdg_popup) catch {
-            owm.log.err("Failed to allocate new popup", .{}, @src());
+            owm.log.err("Failed to allocate new popup");
             return;
         };
     }
@@ -432,7 +431,7 @@ pub const Server = struct {
             },
             .keyboard => {
                 _ = owm.Keyboard.create(server, input_device) catch |err| {
-                    owm.log.err("Failed to allocate keyboard: {}", .{err}, @src());
+                    owm.log.errf("Failed to allocate keyboard: {}", .{err});
                     return;
                 };
             },
