@@ -202,6 +202,11 @@ fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     const output: *Output = @fieldParentPtr("destroy_listener", listener);
 
+    var should_terminate_server = true;
+    if (output.isDisplay()) {
+        should_terminate_server = false;
+    }
+
     output.frame_listener.link.remove();
     output.request_state_listener.link.remove();
     output.destroy_listener.link.remove();
@@ -209,4 +214,8 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     output.link.remove();
 
     owm.c_alloc.destroy(output);
+
+    if (should_terminate_server) {
+        owm.server.wl_server.terminate();
+    }
 }

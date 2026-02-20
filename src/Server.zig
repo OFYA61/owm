@@ -12,7 +12,7 @@ const MIN_TOPLEVEL_WIDTH = 240;
 const MIN_TOPLEVEL_HEIGHT = 135;
 
 wl_server: *wl.Server,
-wl_socket: ?[:0]const u8 = null,
+wl_socket: [11]u8 = undefined,
 
 wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
@@ -79,6 +79,8 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_cursor_manager = wlr_cursor_manager,
     };
 
+    _ = try wl_server.addSocketAuto(&self.wl_socket);
+
     try self.wlr_renderer.initServer(wl_server);
 
     _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer); // Allows clients to allocate surfaces
@@ -125,13 +127,9 @@ pub fn deinit(self: *Server) void {
     self.wl_server.destroy();
 }
 
-pub fn setSocket(self: *Server, socket: [:0]const u8) void {
-    self.wl_socket = socket;
-}
-
 pub fn run(self: *Server) anyerror!void {
     try self.wlr_backend.start();
-    owm.log.infof("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket.?});
+    owm.log.infof("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket});
     self.wl_server.run();
 }
 
@@ -191,7 +189,7 @@ fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
 
     var env_map = try std.process.getEnvMap(owm.c_alloc);
     defer env_map.deinit();
-    try env_map.put("WAYLAND_DISPLAY", self.wl_socket.?);
+    try env_map.put("WAYLAND_DISPLAY", &self.wl_socket);
     child.env_map = &env_map;
 
     try child.spawn();

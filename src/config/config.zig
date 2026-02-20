@@ -1,3 +1,5 @@
+//! Config module, responsible for loading and exposing methods for reading the configs
+
 const std = @import("std");
 const owm = @import("../owm.zig");
 
