@@ -48,6 +48,21 @@ pub const Output = struct {
         var state = wlr.Output.State.init();
         defer state.finish();
         state.setEnabled(true);
+        if (!wlr_output.modes.empty()) {
+            var modes_iterator = wlr_output.modes.iterator(.forward);
+            owm.log.info("The output has the following modes:", .{}, @src());
+            while (modes_iterator.next()) |mode| {
+                owm.log.info(
+                    "\t- {}x{} {}Hz",
+                    .{
+                        mode.width,
+                        mode.height,
+                        @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(mode.refresh)) / 1000))),
+                    },
+                    @src(),
+                );
+            }
+        }
         if (wlr_output.preferredMode()) |mode| {
             owm.log.info(
                 "Output has the preferred mode {}x{} {}Hz",
