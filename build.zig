@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
     scanner.addSystemProtocol("stable/tablet/tablet-v2.xml");
     scanner.addCustomProtocol(b.path("./protocols/wlr-layer-shell-unstable-v1.xml"));
 
-    // Wayland protocolos
+    // Wayland protocols
     scanner.generate("wl_compositor", 4);
     scanner.generate("wl_subcompositor", 1);
     scanner.generate("wl_shm", 1);
