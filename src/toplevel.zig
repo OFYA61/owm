@@ -90,6 +90,32 @@ pub const Toplevel = struct {
     pub fn getGeom(self: *Toplevel) wlr.Box {
         return self.wlr_xdg_toplevel.base.geometry;
     }
+
+    pub fn toggleMaximize(self: *Toplevel) void {
+        if (self.wlr_xdg_toplevel.current.maximized) {
+            const box = self.box_before_maximize;
+            self.setSize(box.width, box.height);
+            self.setPos(box.x, box.y);
+            _ = self.wlr_xdg_toplevel.setMaximized(false);
+        } else {
+            const output_geom = self.current_output.geom;
+            self.box_before_maximize = .{
+                .x = self.x,
+                .y = self.y,
+                .width = self.wlr_xdg_toplevel.current.width,
+                .height = self.wlr_xdg_toplevel.current.height,
+            };
+
+            self.x = output_geom.x;
+            self.y = output_geom.y;
+
+            self.wlr_scene_tree.node.setPosition(output_geom.x, output_geom.y);
+            _ = self.wlr_xdg_toplevel.setSize(output_geom.width, output_geom.height);
+            _ = self.wlr_xdg_toplevel.setMaximized(true);
+        }
+
+        _ = self.wlr_xdg_toplevel.base.scheduleConfigure();
+    }
 };
 
 /// Called when the surface is mapped, or ready to display on screen
@@ -184,29 +210,7 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
         return;
     }
 
-    if (toplevel.wlr_xdg_toplevel.current.maximized) {
-        const box = toplevel.box_before_maximize;
-        toplevel.setSize(box.width, box.height);
-        toplevel.setPos(box.x, box.y);
-        _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
-    } else {
-        const output_geom = toplevel.current_output.geom;
-        toplevel.box_before_maximize = .{
-            .x = toplevel.x,
-            .y = toplevel.y,
-            .width = toplevel.wlr_xdg_toplevel.current.width,
-            .height = toplevel.wlr_xdg_toplevel.current.height,
-        };
-
-        toplevel.x = output_geom.x;
-        toplevel.y = output_geom.y;
-
-        toplevel.wlr_scene_tree.node.setPosition(output_geom.x, output_geom.y);
-        _ = toplevel.wlr_xdg_toplevel.setSize(output_geom.width, output_geom.height);
-        _ = toplevel.wlr_xdg_toplevel.setMaximized(true);
-    }
-
-    _ = toplevel.wlr_xdg_toplevel.base.scheduleConfigure();
+    toplevel.toggleMaximize();
 }
 
 fn requestFullscreenCallback(listener: *wl.Listener(void)) void {

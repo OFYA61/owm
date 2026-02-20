@@ -8,6 +8,8 @@ Commands:
 - Alt + Esc: Terminate
 - Alt + t: Open ghostty terminal emulator
 - Alt + f: Open cosmic-files
+- Alt + b: Launch brave browser
+- Alt + m: Maximize window
 
 Modify the keybinds in `handleKeybind` found in `server.zig`.
 

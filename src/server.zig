@@ -146,8 +146,18 @@ pub const Server = struct {
             },
             xkb.Keysym.f => {
                 self.spawnChild("cosmic-files") catch {
-                    owm.log.err("failed to spawn cosmic-files", .{}, @src());
+                    owm.log.err("Failed to spawn cosmic-files", .{}, @src());
                 };
+            },
+            xkb.Keysym.b => {
+                self.spawnChild("brave") catch {
+                    owm.log.err("Failed to spawm brave", .{}, @src());
+                };
+            },
+            xkb.Keysym.m => {
+                if (self.focused_toplevel) |toplevel| {
+                    toplevel.toggleMaximize();
+                }
             },
             else => return false,
         }
