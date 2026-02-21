@@ -22,6 +22,7 @@ x: i32 = 0,
 y: i32 = 0,
 current_output: *owm.Output,
 box_before_maximize: wlr.Box,
+managed_window: owm.ManagedWindow,
 
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -43,9 +44,11 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
         .wlr_scene_tree = try owm.server.scene_tree_apps.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
         .current_output = output,
         .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+        .managed_window = owm.ManagedWindow.toplevel(toplevel),
     };
 
-    toplevel.wlr_scene_tree.node.data = toplevel;
+    // toplevel.wlr_scene_tree.node.data = toplevel;
+    toplevel.wlr_scene_tree.node.data = &toplevel.managed_window;
     wlr_xdg_toplevel.base.data = toplevel.wlr_scene_tree;
 
     wlr_xdg_toplevel.base.surface.events.map.add(&toplevel.map_listener);

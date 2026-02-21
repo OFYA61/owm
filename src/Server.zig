@@ -244,7 +244,7 @@ const ViewAtResponse = struct {
     sx: f64,
     sy: f64,
     wlr_surface: *wlr.Surface,
-    toplevel: *owm.Toplevel,
+    window: owm.ManagedWindow,
 };
 
 fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
@@ -257,13 +257,25 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
-            if (@as(?*owm.Toplevel, @ptrCast(@alignCast(n.node.data)))) |toplevel| {
-                return ViewAtResponse{
-                    .sx = sx,
-                    .sy = sy,
-                    .wlr_surface = scene_surface.surface,
-                    .toplevel = toplevel,
-                };
+            if (@as(?*owm.ManagedWindow, @ptrCast(@alignCast(n.node.data)))) |node_data| {
+                switch (node_data.window) {
+                    .Toplevel => |toplevel| {
+                        return ViewAtResponse{
+                            .sx = sx,
+                            .sy = sy,
+                            .wlr_surface = scene_surface.surface,
+                            .window = owm.ManagedWindow.toplevel(toplevel),
+                        };
+                    },
+                    .LayerSurface => |layer_surface| {
+                        return ViewAtResponse{
+                            .sx = sx,
+                            .sy = sy,
+                            .wlr_surface = scene_surface.surface,
+                            .window = owm.ManagedWindow.layerSurface(layer_surface),
+                        };
+                    },
+                }
             }
         }
     }
@@ -500,7 +512,14 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
         server.resetCursorMode();
     } else {
         if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
-            server.focusToplevel(result.toplevel, result.wlr_surface);
+            switch (result.window.window) {
+                .Toplevel => |toplevel| {
+                    server.focusToplevel(toplevel, result.wlr_surface);
+                },
+                .LayerSurface => |layer_surface| {
+                    _ = layer_surface;
+                },
+            }
         } else {
             if (server.focused_toplevel) |toplevel| {
                 toplevel.setFocus(false);

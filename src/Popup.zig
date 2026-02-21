@@ -15,15 +15,25 @@ destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
 pub fn create(wlr_xdg_popup: *wlr.XdgPopup) anyerror!void {
     const xdg_surface = wlr_xdg_popup.base;
+    var scene_tree: *wlr.SceneTree = undefined;
+
     // Add to the scene graph so that it gets rendered.
-    const parent = wlr.XdgSurface.tryFromWlrSurface(wlr_xdg_popup.parent.?) orelse return;
-    const parent_tree = @as(?*wlr.SceneTree, @ptrCast(@alignCast(parent.data))) orelse {
-        return;
-    };
-    const scene_tree = parent_tree.createSceneXdgSurface(xdg_surface) catch {
-        owm.log.err("failed to allocate xdg popup node");
-        return;
-    };
+    if (wlr_xdg_popup.parent) |xdg_popup_parent| { // Spawned by a XDG toplevel
+        const parent = wlr.XdgSurface.tryFromWlrSurface(xdg_popup_parent) orelse return;
+        const parent_tree = @as(?*wlr.SceneTree, @ptrCast(@alignCast(parent.data))) orelse {
+            return;
+        };
+        scene_tree = parent_tree.createSceneXdgSurface(xdg_surface) catch {
+            owm.log.err("Failed to allocate XDG popup node");
+            return;
+        };
+    } else { // Most likely spawned by a status bar
+        scene_tree = owm.server.scene_tree_apps.createSceneXdgSurface(xdg_surface) catch {
+            owm.log.err("Failed to allocate XDG popup node");
+            return;
+        };
+    }
+
     xdg_surface.data = scene_tree;
 
     const popup = try owm.c_alloc.create(Popup);

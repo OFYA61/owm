@@ -1,3 +1,4 @@
+//! Reprezents surfaces requested via the `wlr-layer-shell-v1` protocol
 pub const LayerSurface = @This();
 
 const wl = @import("wayland").server.wl;
@@ -9,6 +10,7 @@ wlr_layer_surface: *wlr.LayerSurfaceV1,
 output: *owm.Output,
 wlr_scene_layer_surface: *wlr.SceneLayerSurfaceV1,
 link: wl.list.Link = undefined,
+managed_window: owm.ManagedWindow,
 
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -17,24 +19,27 @@ new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 destroy_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(destroyCallback),
 
 pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) !*LayerSurface {
-    const layer_shell = try owm.c_alloc.create(LayerSurface);
-    errdefer owm.c_alloc.destroy(layer_shell);
+    const layer_surface = try owm.c_alloc.create(LayerSurface);
+    errdefer owm.c_alloc.destroy(layer_surface);
 
     const wlr_scene_layer_surface = try owm.server.scene_tree_foreground.createSceneLayerSurfaceV1(wlr_layer_surface);
 
-    layer_shell.* = .{
+    layer_surface.* = .{
         .output = owm.server.outputs.first().?,
         .wlr_layer_surface = wlr_layer_surface,
         .wlr_scene_layer_surface = wlr_scene_layer_surface,
+        .managed_window = owm.ManagedWindow.layerSurface(layer_surface),
     };
 
-    wlr_layer_surface.surface.events.map.add(&layer_shell.map_listener);
-    wlr_layer_surface.surface.events.unmap.add(&layer_shell.unmap_listener);
-    wlr_layer_surface.surface.events.commit.add(&layer_shell.commit_listener);
-    wlr_layer_surface.events.new_popup.add(&layer_shell.new_popup_listener);
-    wlr_layer_surface.events.destroy.add(&layer_shell.destroy_listener);
+    layer_surface.wlr_scene_layer_surface.tree.node.data = &layer_surface.managed_window;
 
-    return layer_shell;
+    wlr_layer_surface.surface.events.map.add(&layer_surface.map_listener);
+    wlr_layer_surface.surface.events.unmap.add(&layer_surface.unmap_listener);
+    wlr_layer_surface.surface.events.commit.add(&layer_surface.commit_listener);
+    wlr_layer_surface.events.new_popup.add(&layer_surface.new_popup_listener);
+    wlr_layer_surface.events.destroy.add(&layer_surface.destroy_listener);
+
+    return layer_surface;
 }
 
 fn mapCallback(_: *wl.Listener(void)) void {
