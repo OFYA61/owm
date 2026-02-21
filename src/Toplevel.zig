@@ -40,7 +40,7 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
 
     toplevel.* = .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,
-        .wlr_scene_tree = try owm.server.wlr_scene.tree.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
+        .wlr_scene_tree = try owm.server.scene_tree_apps.createSceneXdgSurface(wlr_xdg_toplevel.base), // Add a node displaying an xdg_surface and all of it's sub-surfaces to the scene graph.
         .current_output = output,
         .box_before_maximize = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     };
@@ -57,9 +57,9 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
     wlr_xdg_toplevel.events.request_maximize.add(&toplevel.request_maximize_listener);
     wlr_xdg_toplevel.events.request_fullscreen.add(&toplevel.request_fullscreen_listener);
 
-    const geom = output.geom;
-    const spawn_x = geom.x + @divExact(geom.width, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_X, 2);
-    const spawn_y = geom.y + @divExact(geom.height, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_Y, 2);
+    const work_area = output.area;
+    const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_X, 2);
+    const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(TOPLEVEL_SPAWN_SIZE_Y, 2);
     toplevel.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
     toplevel.x = spawn_x;
     toplevel.y = spawn_y;
@@ -97,7 +97,7 @@ pub fn toggleMaximize(self: *Toplevel) void {
         self.setPos(box.x, box.y);
         _ = self.wlr_xdg_toplevel.setMaximized(false);
     } else {
-        const output_geom = self.current_output.geom;
+        const output_work_area = self.current_output.work_area;
         self.box_before_maximize = .{
             .x = self.x,
             .y = self.y,
@@ -105,11 +105,11 @@ pub fn toggleMaximize(self: *Toplevel) void {
             .height = self.wlr_xdg_toplevel.current.height,
         };
 
-        self.x = output_geom.x;
-        self.y = output_geom.y;
+        self.x = output_work_area.x;
+        self.y = output_work_area.y;
 
-        self.wlr_scene_tree.node.setPosition(output_geom.x, output_geom.y);
-        _ = self.wlr_xdg_toplevel.setSize(output_geom.width, output_geom.height);
+        self.wlr_scene_tree.node.setPosition(output_work_area.x, output_work_area.y);
+        _ = self.wlr_xdg_toplevel.setSize(output_work_area.width, output_work_area.height);
         _ = self.wlr_xdg_toplevel.setMaximized(true);
     }
 

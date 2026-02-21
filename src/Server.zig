@@ -15,6 +15,8 @@ wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
 
 wlr_scene: *wlr.Scene,
+scene_tree_apps: *wlr.SceneTree,
+scene_tree_foreground: *wlr.SceneTree,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
 
 wlr_backend: *wlr.Backend,
@@ -60,15 +62,21 @@ pub fn init(self: *Server) anyerror!void {
     const event_loop = wl_server.getEventLoop();
     const wlr_backend = try wlr.Backend.autocreate(event_loop, null); // Auto picks the backend (Wayland, X11, DRM+KSM)
     const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend); // Auto picks a renderer (Pixman, GLES2, Vulkan)
+    const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
     const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
     const wlr_layer_shell_v1 = try wlr.LayerShellV1.create(wl_server, 5); // Protocol for status bars
     const wlr_scene = try wlr.Scene.create(); // Abstraction that handles all rendering and damage tracking
-    const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
     const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3); // XDG protocol for app windows
     const wlr_seat = try wlr.Seat.create(wl_server, "seat0"); // Input device seat
     const wlr_cursor = try wlr.Cursor.create(); // Mouse
     const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24); // Sources cursor images
+
+    const scene_tree_apps = try wlr_scene.tree.createSceneTree();
+    scene_tree_apps.node.setPosition(0, 0);
+    const scene_tree_foreground = try wlr_scene.tree.createSceneTree();
+    scene_tree_foreground.node.setPosition(0, 0);
+    scene_tree_foreground.node.raiseToTop();
 
     self.* = .{
         .wl_server = wl_server,
@@ -76,6 +84,8 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_renderer = wlr_renderer,
         .wlr_allocator = wlr_allocator,
         .wlr_scene = wlr_scene,
+        .scene_tree_apps = scene_tree_apps,
+        .scene_tree_foreground = scene_tree_foreground,
         .wlr_output_layout = wlr_output_layout,
         .wlr_layer_shell_v1 = wlr_layer_shell_v1,
         .wlr_scene_output_layout = wlr_scene_output_layout,
@@ -213,11 +223,11 @@ pub fn outputAtCursor(self: *Server) ?*owm.Output {
 pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
     var output_iterator = self.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
-        const geom = output.geom;
-        const x = @as(f64, @floatFromInt(geom.x));
-        const y = @as(f64, @floatFromInt(geom.y));
-        const width = @as(f64, @floatFromInt(geom.width));
-        const height = @as(f64, @floatFromInt(geom.height));
+        const area = output.area;
+        const x = @as(f64, @floatFromInt(area.x));
+        const y = @as(f64, @floatFromInt(area.y));
+        const width = @as(f64, @floatFromInt(area.width));
+        const height = @as(f64, @floatFromInt(area.height));
         if (x <= lx and lx < x + width and y <= ly and ly < y + height) {
             return output;
         }
@@ -327,8 +337,8 @@ fn processCursorMotion(self: *Server, time: u32) void {
 fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
     const server: *Server = @fieldParentPtr("new_output_listener", listener);
 
-    const new_output = owm.Output.create(wlr_output) catch {
-        owm.log.err("Failed to allocate new output");
+    const new_output = owm.Output.create(wlr_output) catch |err| {
+        owm.log.errf("Failed to allocate new output {}", .{err});
         wlr_output.destroy();
         return;
     };
@@ -389,11 +399,11 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         for (outputs.items) |output| {
             displays.append(owm.alloc, owm.config.OutputConfig.Arrangement.Display{
                 .id = output.id,
-                .width = output.geom.width,
-                .height = output.geom.height,
+                .width = output.area.width,
+                .height = output.area.height,
                 .refresh = output.getRefresh(),
-                .x = output.geom.x,
-                .y = output.geom.y,
+                .x = output.area.x,
+                .y = output.area.y,
                 .active = output.wlr_output.enabled,
             }) catch {
                 owm.log.err("Failed to append display definition");
@@ -521,22 +531,6 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
 
 fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
     const server: *Server = @fieldParentPtr("new_layer_surface_listener", listener);
-    owm.log.infof(
-        "New layer surface reuquest: namespace={s} anchor=({}, {}, {}, {}) size=({}, {}) margin=({}, {}, {}, {})",
-        .{
-            wlr_layer_surface.namespace,
-            wlr_layer_surface.pending.anchor.top,
-            wlr_layer_surface.pending.anchor.right,
-            wlr_layer_surface.pending.anchor.bottom,
-            wlr_layer_surface.pending.anchor.left,
-            wlr_layer_surface.pending.desired_width,
-            wlr_layer_surface.pending.desired_height,
-            wlr_layer_surface.pending.margin.top,
-            wlr_layer_surface.pending.margin.right,
-            wlr_layer_surface.pending.margin.bottom,
-            wlr_layer_surface.pending.margin.left,
-        },
-    );
 
     if (wlr_layer_surface.output == null) {
         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
