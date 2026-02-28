@@ -31,6 +31,7 @@ new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSur
 layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 
 wlr_xdg_shell: *wlr.XdgShell,
+toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
 
@@ -103,6 +104,8 @@ pub fn init(self: *Server) anyerror!void {
     _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
     _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
     _ = try wlr.XdgOutputManagerV1.create(self.wl_server, self.wlr_output_layout); // Protocol required by `waybar`
+
+    self.toplevels.init();
 
     self.outputs.init();
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
@@ -179,14 +182,27 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
                 toplevel.toggleMaximize();
             }
         },
+        xkb.Keysym.F1 => {
+            if (self.focused_toplevel) |_| {
+                const first_toplevel = self.toplevels.first().?;
+                first_toplevel.link.remove();
+                self.toplevels.append(first_toplevel);
+                self.focusToplevel(self.toplevels.first().?);
+            } else if (self.toplevels.first()) |first_toplevel| {
+                self.focusToplevel(first_toplevel);
+            }
+        },
         else => return false,
     }
     return true;
 }
 
-pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel, surface: *wlr.Surface) void {
+pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel) void {
     if (self.focused_toplevel) |prev_toplevel| {
-        if (prev_toplevel.checkSurfaceMatch(surface)) return;
+        if (prev_toplevel == toplevel) {
+            return;
+        }
+
         prev_toplevel.setFocus(false);
     }
 
@@ -194,11 +210,13 @@ pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel, surface: *wlr.Surfa
 
     const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
     self.wlr_seat.keyboardNotifyEnter(
-        surface,
+        toplevel.getWlrSurface(),
         wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
         &wlr_keyboard.modifiers,
     );
 
+    toplevel.link.remove();
+    self.toplevels.prepend(toplevel);
     self.focused_toplevel = toplevel;
 }
 
@@ -421,13 +439,11 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-    const toplevel = owm.Toplevel.create(wlr_xdg_toplevel) catch {
+    _ = owm.Toplevel.create(wlr_xdg_toplevel) catch {
         owm.log.err("Failed to allocate new toplevel");
         wlr_xdg_toplevel.sendClose();
         return;
     };
-    _ = toplevel;
-    // const managed_window = owm.ManagedWindow.toplevel(toplevel);
 }
 
 /// Called when a client create a new popup
@@ -504,17 +520,16 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
         if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
             switch (result.window.window) {
                 .Toplevel => |toplevel| {
-                    server.focusToplevel(toplevel, result.wlr_surface);
+                    server.focusToplevel(toplevel);
                 },
                 .LayerSurface => |layer_surface| {
                     _ = layer_surface;
                 },
             }
-        } else {
-            if (server.focused_toplevel) |toplevel| {
-                toplevel.setFocus(false);
-                server.focused_toplevel = null;
-            }
+        } else if (server.focused_toplevel) |toplevel| {
+            toplevel.setFocus(false);
+            server.focused_toplevel = null;
+            server.wlr_seat.keyboardNotifyClearFocus();
         }
     }
 }

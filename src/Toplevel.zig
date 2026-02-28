@@ -23,6 +23,7 @@ y: i32 = 0,
 current_output: *owm.Output,
 box_before_maximize: wlr.Box,
 managed_window: owm.ManagedWindow,
+link: wl.list.Link = undefined,
 
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -68,6 +69,10 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!*Toplevel {
     toplevel.y = spawn_y;
 
     return toplevel;
+}
+
+pub fn getWlrSurface(self: *Toplevel) *wlr.Surface {
+    return self.wlr_xdg_toplevel.base.surface;
 }
 
 pub fn checkSurfaceMatch(self: *Toplevel, surface: *wlr.Surface) bool {
@@ -124,7 +129,8 @@ pub fn toggleMaximize(self: *Toplevel) void {
 /// Called when the surface is mapped, or ready to display on screen
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Toplevel = @fieldParentPtr("map_listener", listener);
-    owm.server.focusToplevel(toplevel, toplevel.wlr_xdg_toplevel.base.surface);
+    owm.server.toplevels.prepend(toplevel);
+    owm.server.focusToplevel(toplevel);
 }
 
 /// Called when the surface should no longer be shown
@@ -133,6 +139,7 @@ fn unmapCallback(listener: *wl.Listener(void)) void {
     if (owm.server.grabbed_toplevel == toplevel) {
         owm.server.resetCursorMode();
     }
+    toplevel.link.remove();
 }
 
 /// Called when the surface state is committed
