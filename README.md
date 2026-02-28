@@ -10,6 +10,7 @@ Commands:
 - Alt + f: Open cosmic-files
 - Alt + b: Launch brave browser
 - Alt + m: Maximize window
+- Alt + F1: "Alt Tab"
 
 Modify the keybinds in `handleKeybind` found in `server.zig`.
 
