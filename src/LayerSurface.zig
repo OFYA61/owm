@@ -110,8 +110,8 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const layer_surface: *LayerSurface = @fieldParentPtr("new_popup_listener", listener);
     _ = layer_surface;
-    owm.Popup.create(wlr_xdg_popup) catch {
-        owm.log.err("Failed to create XDG Popup for layer shell");
+    _ = owm.Popup.create(wlr_xdg_popup) catch |err| {
+        owm.log.errf("Failed to create XDG Popup for layer shell {}", .{err});
     };
 }
 

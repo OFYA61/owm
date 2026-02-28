@@ -33,7 +33,7 @@ request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requ
 request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
-pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
+pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!*Toplevel {
     const toplevel = try owm.c_alloc.create(Toplevel);
     errdefer owm.c_alloc.destroy(toplevel);
 
@@ -66,6 +66,8 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!void {
     toplevel.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
     toplevel.x = spawn_x;
     toplevel.y = spawn_y;
+
+    return toplevel;
 }
 
 pub fn checkSurfaceMatch(self: *Toplevel, surface: *wlr.Surface) bool {

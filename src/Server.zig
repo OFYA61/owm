@@ -24,6 +24,7 @@ wlr_allocator: *wlr.Allocator,
 wlr_renderer: *wlr.Renderer,
 wlr_output_layout: *wlr.OutputLayout,
 outputs: wl.list.Head(owm.Output, .link) = undefined,
+new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
@@ -32,7 +33,6 @@ layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 wlr_xdg_shell: *wlr.XdgShell,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
-new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
 wlr_seat: *wlr.Seat,
 focused_toplevel: ?*owm.Toplevel = null,
@@ -244,7 +244,7 @@ const ViewAtResponse = struct {
     sx: f64,
     sy: f64,
     wlr_surface: *wlr.Surface,
-    window: owm.ManagedWindow,
+    window: *owm.ManagedWindow,
 };
 
 fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
@@ -258,24 +258,12 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
             if (@as(?*owm.ManagedWindow, @ptrCast(@alignCast(n.node.data)))) |node_data| {
-                switch (node_data.window) {
-                    .Toplevel => |toplevel| {
-                        return ViewAtResponse{
-                            .sx = sx,
-                            .sy = sy,
-                            .wlr_surface = scene_surface.surface,
-                            .window = owm.ManagedWindow.toplevel(toplevel),
-                        };
-                    },
-                    .LayerSurface => |layer_surface| {
-                        return ViewAtResponse{
-                            .sx = sx,
-                            .sy = sy,
-                            .wlr_surface = scene_surface.surface,
-                            .window = owm.ManagedWindow.layerSurface(layer_surface),
-                        };
-                    },
-                }
+                return ViewAtResponse{
+                    .sx = sx,
+                    .sy = sy,
+                    .wlr_surface = scene_surface.surface,
+                    .window = node_data,
+                };
             }
         }
     }
@@ -433,17 +421,19 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-    owm.Toplevel.create(wlr_xdg_toplevel) catch {
+    const toplevel = owm.Toplevel.create(wlr_xdg_toplevel) catch {
         owm.log.err("Failed to allocate new toplevel");
         wlr_xdg_toplevel.sendClose();
         return;
     };
+    _ = toplevel;
+    // const managed_window = owm.ManagedWindow.toplevel(toplevel);
 }
 
 /// Called when a client create a new popup
 fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-    owm.Popup.create(wlr_xdg_popup) catch {
-        owm.log.err("Failed to allocate new popup");
+    _ = owm.Popup.create(wlr_xdg_popup) catch |err| {
+        owm.log.errf("Failed to allocate new popup: {}", .{err});
         return;
     };
 }
