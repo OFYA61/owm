@@ -179,8 +179,8 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel.request_maximize_listener.link.remove();
     toplevel.request_fullscreen_listener.link.remove();
 
-    if (owm.server.focused_toplevel == toplevel) {
-        owm.server.focused_toplevel = null;
+    if (owm.server.focused_window == toplevel) {
+        owm.server.focused_window = null;
     }
 
     owm.c_alloc.destroy(toplevel);

@@ -35,7 +35,7 @@ toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 
 wlr_seat: *wlr.Seat,
-focused_toplevel: ?*owm.Toplevel = null,
+focused_window: ?*owm.Toplevel = null,
 new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
 request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
 request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
@@ -175,12 +175,12 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
             };
         },
         xkb.Keysym.m => {
-            if (self.focused_toplevel) |toplevel| {
+            if (self.focused_window) |toplevel| {
                 toplevel.toggleMaximize();
             }
         },
         xkb.Keysym.F1 => {
-            if (self.focused_toplevel) |_| {
+            if (self.focused_window) |_| {
                 const first_toplevel = self.toplevels.first().?;
                 first_toplevel.link.remove();
                 self.toplevels.append(first_toplevel);
@@ -195,7 +195,7 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
 }
 
 pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel) void {
-    if (self.focused_toplevel) |prev_toplevel| {
+    if (self.focused_window) |prev_toplevel| {
         if (prev_toplevel == toplevel) {
             return;
         }
@@ -214,7 +214,7 @@ pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel) void {
 
     toplevel.link.remove();
     self.toplevels.prepend(toplevel);
-    self.focused_toplevel = toplevel;
+    self.focused_window = toplevel;
 }
 
 fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
@@ -514,10 +514,13 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
                 .LayerSurface => |layer_surface| {
                     _ = layer_surface;
                 },
+                .Popup => |popup| {
+                    _ = popup;
+                },
             }
-        } else if (server.focused_toplevel) |toplevel| {
+        } else if (server.focused_window) |toplevel| {
             toplevel.setFocus(false);
-            server.focused_toplevel = null;
+            server.focused_window = null;
             server.wlr_seat.keyboardNotifyClearFocus();
         }
     }
