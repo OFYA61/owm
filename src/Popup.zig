@@ -40,7 +40,7 @@ pub fn create(
         },
         .LayerSurface => |layer_surface| {
             output = layer_surface.output;
-            scene_tree = owm.server.scene_tree_apps.createSceneXdgSurface(xdg_surface) catch {
+            scene_tree = layer_surface.wlr_scene_layer_surface.tree.createSceneXdgSurface(xdg_surface) catch {
                 owm.log.err("Failed to create scene tree for popup");
                 return error.FailedToCreateSceneTree;
             };
@@ -76,7 +76,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 }
 
 fn repositionCallback(listener: *wl.Listener(void)) void {
-    const popup: *Popup = @fieldParentPtr("destroy_listener", listener);
+    const popup: *Popup = @fieldParentPtr("reposition_listener", listener);
     popup.wlr_xdg_popup.unconstrainFromBox(&popup.output.area);
 }
 
