@@ -11,9 +11,6 @@ const owm = @import("owm.zig");
 
 const TOPLEVEL_SPAWN_SIZE_X = 640;
 const TOPLEVEL_SPAWN_SIZE_Y = 360;
-const FOCUS_BORDER_WIDTH = 2;
-const FOCUS_BORDER_SIZE_DIFF = FOCUS_BORDER_WIDTH * 2;
-const FOCUS_BORDER_COLOR = [4]f32{ 0, 255, 255, 255 }; // cyan
 
 wlr_xdg_toplevel: *wlr.XdgToplevel,
 wlr_scene_tree: *wlr.SceneTree,

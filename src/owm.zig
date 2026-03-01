@@ -15,6 +15,7 @@ pub const ManagedWindow = @import("ManagedWindow.zig");
 pub const Output = @import("Output.zig");
 pub const Popup = @import("Popup.zig");
 pub const Toplevel = @import("Toplevel.zig");
+pub const XWaylandWindow = @import("XWaylandWindow.zig");
 
 /// Wayland server instance
 pub var server: @import("Server.zig") = undefined;

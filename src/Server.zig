@@ -30,6 +30,9 @@ wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
 layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 
+wlr_xwayland: *wlr.Xwayland,
+xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylandNewSurfaceCallback),
+
 wlr_xdg_shell: *wlr.XdgShell,
 toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
@@ -72,6 +75,12 @@ pub fn init(self: *Server) anyerror!void {
     const wlr_cursor = try wlr.Cursor.create(); // Mouse
     const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24); // Sources cursor images
 
+    const wlr_compositor = try wlr.Compositor.create(wl_server, 6, wlr_renderer); // Allows clients to allocate surfaces
+    _ = try wlr.Subcompositor.create(wl_server); // Allows clients to assign role to subsurfaces
+    _ = try wlr.DataDeviceManager.create(wl_server); // Handles clipboard
+    _ = try wlr.XdgOutputManagerV1.create(wl_server, wlr_output_layout); // Protocol required by `waybar`
+    const wlr_xwayland = try wlr.Xwayland.create(wl_server, wlr_compositor, true);
+
     const scene_tree_apps = try wlr_scene.tree.createSceneTree();
     scene_tree_apps.node.setPosition(0, 0);
     const scene_tree_foreground = try wlr_scene.tree.createSceneTree();
@@ -93,16 +102,12 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_seat = wlr_seat,
         .wlr_cursor = wlr_cursor,
         .wlr_cursor_manager = wlr_cursor_manager,
+        .wlr_xwayland = wlr_xwayland,
     };
 
     _ = try wl_server.addSocketAuto(&self.wl_socket);
 
     try self.wlr_renderer.initServer(wl_server);
-
-    _ = try wlr.Compositor.create(self.wl_server, 6, self.wlr_renderer); // Allows clients to allocate surfaces
-    _ = try wlr.Subcompositor.create(self.wl_server); // Allows clients to assign role to subsurfaces
-    _ = try wlr.DataDeviceManager.create(self.wl_server); // Handles clipboard
-    _ = try wlr.XdgOutputManagerV1.create(self.wl_server, self.wlr_output_layout); // Protocol required by `waybar`
 
     self.toplevels.init();
 
@@ -125,10 +130,14 @@ pub fn init(self: *Server) anyerror!void {
 
     self.layer_surfaces.init();
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
+
+    wlr_xwayland.events.new_surface.add(&self.xwayland_new_surface_listener);
 }
 
 pub fn deinit(self: *Server) void {
     self.wl_server.destroyClients();
+
+    self.xwayland_new_surface_listener.link.remove();
 
     self.new_layer_surface_listener.link.remove();
 
@@ -144,13 +153,20 @@ pub fn deinit(self: *Server) void {
     self.cursor_axis_listener.link.remove();
     self.cursor_frame_listener.link.remove();
 
+    self.wlr_xwayland.destroy();
     self.wlr_backend.destroy();
     self.wl_server.destroy();
 }
 
 pub fn run(self: *Server) anyerror!void {
     try self.wlr_backend.start();
-    owm.log.infof("Running OWM compositor on WAYLAND_DISPLAY={s}", .{self.wl_socket});
+    owm.log.infof(
+        "Running OWM compositor on WAYLAND_DISPLAY='{s}' and Xwayland DISLPAY='{s}'",
+        .{
+            self.wl_socket,
+            self.wlr_xwayland.display_name,
+        },
+    );
     self.wl_server.run();
 }
 
@@ -226,6 +242,7 @@ fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
     var env_map = try std.process.getEnvMap(owm.c_alloc);
     defer env_map.deinit();
     try env_map.put("WAYLAND_DISPLAY", &self.wl_socket);
+    // try env_map.put("DISPLAY", self.wlr_xwayland.display_name);
     child.env_map = &env_map;
 
     try child.spawn();
@@ -432,6 +449,14 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
             return;
         };
     }
+}
+
+fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
+    _ = listener;
+    _ = owm.XWaylandWindow.create(wlr_xwayland_surface) catch |err| {
+        owm.log.errf("Failed to allocate XWaylandWindow: {}", .{err});
+        return;
+    };
 }
 
 /// Called when a client creates a new toplevel (app window)
