@@ -22,7 +22,6 @@ pub fn create(
     wlr_xdg_popup: *wlr.XdgPopup,
     parent: *owm.ManagedWindow,
 ) error{
-    FailedToGetParentNode,
     FailedToCreateSceneTree,
     OutOfMemory,
 }!*Popup {
