@@ -242,8 +242,7 @@ pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.LayerSurface) void 
                     right += size;
                 },
             }
-
-            zone.owner.wlr_scene_layer_surface.tree.node.setPosition(new_x, new_y);
+            zone.owner.setPos(new_x, new_y);
         }
     }
 }

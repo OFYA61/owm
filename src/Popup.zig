@@ -12,7 +12,7 @@ var idx: usize = 0;
 id: usize,
 wlr_xdg_popup: *wlr.XdgPopup,
 wlr_scene_tree: *wlr.SceneTree,
-output: *owm.Output,
+parent: owm.ManagedWindow,
 
 commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
 reposition_listener: wl.Listener(void) = .init(repositionCallback),
@@ -28,7 +28,6 @@ pub fn create(
     defer idx += 1;
     const xdg_surface = wlr_xdg_popup.base;
     var scene_tree: *wlr.SceneTree = undefined;
-    var output: *owm.Output = undefined;
 
     switch (parent.window) {
         .Toplevel => |toplevel| {
@@ -36,10 +35,8 @@ pub fn create(
                 owm.log.err("Failed to create scene tree for popup");
                 return error.FailedToCreateSceneTree;
             };
-            output = toplevel.current_output;
         },
         .LayerSurface => |layer_surface| {
-            output = layer_surface.output;
             scene_tree = layer_surface.wlr_scene_layer_surface.tree.createSceneXdgSurface(xdg_surface) catch {
                 owm.log.err("Failed to create scene tree for popup");
                 return error.FailedToCreateSceneTree;
@@ -56,7 +53,7 @@ pub fn create(
         .id = idx,
         .wlr_xdg_popup = wlr_xdg_popup,
         .wlr_scene_tree = scene_tree,
-        .output = output,
+        .parent = parent.*,
     };
 
     xdg_surface.surface.events.commit.add(&popup.commit_listener);
@@ -66,18 +63,35 @@ pub fn create(
     return popup;
 }
 
+fn unconstrain(self: *Popup) void {
+    var unconstrainBox: wlr.Box = undefined;
+    switch (self.parent.window) {
+        .Toplevel => |toplevel| {
+            unconstrainBox = toplevel.current_output.area;
+            unconstrainBox.x -= toplevel.x;
+            unconstrainBox.y -= toplevel.y;
+        },
+        .LayerSurface => |layer_surface| {
+            unconstrainBox = layer_surface.output.area;
+            unconstrainBox.x -= layer_surface.x;
+            unconstrainBox.y -= layer_surface.y;
+        },
+    }
+    self.wlr_xdg_popup.unconstrainFromBox(&unconstrainBox);
+}
+
 /// Called when a new surface state is commited
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
     const popup: *Popup = @fieldParentPtr("commit_listener", listener);
     if (popup.wlr_xdg_popup.base.initial_commit) {
-        popup.wlr_xdg_popup.unconstrainFromBox(&popup.output.area);
+        popup.unconstrain();
         _ = popup.wlr_xdg_popup.base.scheduleConfigure();
     }
 }
 
 fn repositionCallback(listener: *wl.Listener(void)) void {
     const popup: *Popup = @fieldParentPtr("reposition_listener", listener);
-    popup.wlr_xdg_popup.unconstrainFromBox(&popup.output.area);
+    popup.unconstrain();
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {

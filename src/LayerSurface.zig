@@ -11,6 +11,8 @@ output: *owm.Output,
 wlr_scene_layer_surface: *wlr.SceneLayerSurfaceV1,
 link: wl.list.Link = undefined,
 managed_window: owm.ManagedWindow,
+x: i32 = 0,
+y: i32 = 0,
 
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -29,6 +31,8 @@ pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) error{ FailedToDetermineOu
         .wlr_layer_surface = wlr_layer_surface,
         .wlr_scene_layer_surface = wlr_scene_layer_surface,
         .managed_window = owm.ManagedWindow.layerSurface(layer_surface),
+        .x = wlr_scene_layer_surface.tree.node.x,
+        .y = wlr_scene_layer_surface.tree.node.y,
     };
 
     layer_surface.wlr_scene_layer_surface.tree.node.data = &layer_surface.managed_window;
@@ -40,6 +44,12 @@ pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) error{ FailedToDetermineOu
     wlr_layer_surface.events.destroy.add(&layer_surface.destroy_listener);
 
     return layer_surface;
+}
+
+pub fn setPos(self: *LayerSurface, new_x: c_int, new_y: c_int) void {
+    self.x = new_x;
+    self.y = new_y;
+    self.wlr_scene_layer_surface.tree.node.setPosition(new_x, new_y);
 }
 
 fn mapCallback(_: *wl.Listener(void)) void {
