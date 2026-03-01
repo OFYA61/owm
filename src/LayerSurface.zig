@@ -18,14 +18,14 @@ commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 destroy_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(destroyCallback),
 
-pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) !*LayerSurface {
+pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) error{ FailedToDetermineOutput, OutOfMemory }!*LayerSurface {
     const layer_surface = try owm.c_alloc.create(LayerSurface);
     errdefer owm.c_alloc.destroy(layer_surface);
 
     const wlr_scene_layer_surface = try owm.server.scene_tree_foreground.createSceneLayerSurfaceV1(wlr_layer_surface);
 
     layer_surface.* = .{
-        .output = owm.server.outputs.first().?,
+        .output = owm.Output.fromOpaquePtr(wlr_layer_surface.output.?.data) orelse return error.FailedToDetermineOutput,
         .wlr_layer_surface = wlr_layer_surface,
         .wlr_scene_layer_surface = wlr_scene_layer_surface,
         .managed_window = owm.ManagedWindow.layerSurface(layer_surface),
@@ -109,8 +109,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
 
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const layer_surface: *LayerSurface = @fieldParentPtr("new_popup_listener", listener);
-    _ = layer_surface;
-    _ = owm.Popup.create(wlr_xdg_popup) catch |err| {
+    _ = owm.Popup.create(wlr_xdg_popup, &layer_surface.managed_window) catch |err| {
         owm.log.errf("Failed to create XDG Popup for layer shell {}", .{err});
     };
 }

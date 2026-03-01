@@ -45,6 +45,10 @@ pub const Error = error{
     OutOfMemory,
 };
 
+pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Output {
+    return @as(*Output, @ptrCast(@alignCast(ptr)));
+}
+
 pub fn create(wlr_output: *wlr.Output) Error!*Output {
     const output = try owm.c_alloc.create(Output);
     errdefer owm.c_alloc.destroy(output);
@@ -116,6 +120,8 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         .layout_output = layout_output,
         .scene_output = scene_output,
     };
+
+    wlr_output.data = output;
 
     wlr_output.events.frame.add(&output.frame_listener);
     wlr_output.events.request_state.add(&output.request_state_listener);

@@ -7,6 +7,10 @@ window: union(enum) {
     LayerSurface: *owm.LayerSurface,
 },
 
+pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*ManagedWindow {
+    return @as(?*ManagedWindow, @ptrCast(@alignCast(ptr)));
+}
+
 pub fn toplevel(tl: *owm.Toplevel) ManagedWindow {
     return .{
         .window = .{

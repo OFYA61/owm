@@ -33,7 +33,6 @@ layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 wlr_xdg_shell: *wlr.XdgShell,
 toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
-new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
 
 wlr_seat: *wlr.Seat,
 focused_toplevel: ?*owm.Toplevel = null,
@@ -111,7 +110,6 @@ pub fn init(self: *Server) anyerror!void {
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
     self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
-    self.wlr_xdg_shell.events.new_popup.add(&self.new_popup_listener);
 
     self.wlr_backend.events.new_input.add(&self.new_input_listener);
     self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
@@ -138,7 +136,6 @@ pub fn deinit(self: *Server) void {
     self.new_output_listener.link.remove();
 
     self.new_toplevel_listener.link.remove();
-    self.new_popup_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();
     self.cursor_motion_listener.link.remove();
@@ -275,7 +272,7 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
-            if (@as(?*owm.ManagedWindow, @ptrCast(@alignCast(n.node.data)))) |node_data| {
+            if (owm.ManagedWindow.fromOpaquePtr(n.node.data)) |node_data| {
                 return ViewAtResponse{
                     .sx = sx,
                     .sy = sy,
@@ -442,14 +439,6 @@ fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *
     _ = owm.Toplevel.create(wlr_xdg_toplevel) catch {
         owm.log.err("Failed to allocate new toplevel");
         wlr_xdg_toplevel.sendClose();
-        return;
-    };
-}
-
-/// Called when a client create a new popup
-fn newXdgPopupCallback(_: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-    _ = owm.Popup.create(wlr_xdg_popup) catch |err| {
-        owm.log.errf("Failed to allocate new popup: {}", .{err});
         return;
     };
 }

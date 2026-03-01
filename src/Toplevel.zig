@@ -25,6 +25,7 @@ box_before_maximize: wlr.Box,
 managed_window: owm.ManagedWindow,
 link: wl.list.Link = undefined,
 
+new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
 commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
@@ -48,10 +49,10 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) anyerror!*Toplevel {
         .managed_window = owm.ManagedWindow.toplevel(toplevel),
     };
 
-    // toplevel.wlr_scene_tree.node.data = toplevel;
     toplevel.wlr_scene_tree.node.data = &toplevel.managed_window;
     wlr_xdg_toplevel.base.data = toplevel.wlr_scene_tree;
 
+    wlr_xdg_toplevel.base.events.new_popup.add(&toplevel.new_popup_listener);
     wlr_xdg_toplevel.base.surface.events.map.add(&toplevel.map_listener);
     wlr_xdg_toplevel.base.surface.events.unmap.add(&toplevel.unmap_listener);
     wlr_xdg_toplevel.base.surface.events.commit.add(&toplevel.commit_listener);
@@ -126,6 +127,14 @@ pub fn toggleMaximize(self: *Toplevel) void {
     _ = self.wlr_xdg_toplevel.base.scheduleConfigure();
 }
 
+fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
+    const toplevel: *Toplevel = @fieldParentPtr("new_popup_listener", listener);
+    _ = owm.Popup.create(wlr_xdg_popup, &toplevel.managed_window) catch |err| {
+        owm.log.errf("Failed to create XDG Popup for toplevel {}", .{err});
+        return;
+    };
+}
+
 /// Called when the surface is mapped, or ready to display on screen
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Toplevel = @fieldParentPtr("map_listener", listener);
@@ -160,6 +169,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 fn destroyCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Toplevel = @fieldParentPtr("destroy_listener", listener);
 
+    toplevel.new_popup_listener.link.remove();
     toplevel.map_listener.link.remove();
     toplevel.unmap_listener.link.remove();
     toplevel.commit_listener.link.remove();
