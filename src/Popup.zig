@@ -8,9 +8,6 @@ const wlr = @import("wlroots");
 
 const owm = @import("owm.zig");
 
-var idx: usize = 0;
-
-id: usize,
 wlr_xdg_popup: *wlr.XdgPopup,
 wlr_scene_tree: *wlr.SceneTree,
 parent: owm.ManagedWindow,
@@ -27,31 +24,18 @@ pub fn create(
 ) error{
     FailedToCreateSceneTree,
     OutOfMemory,
+    ParentSceneTreeNotFound,
 }!*Popup {
-    defer idx += 1;
     const xdg_surface = wlr_xdg_popup.base;
-    var scene_tree: *wlr.SceneTree = undefined;
 
-    switch (parent.window) {
-        .Toplevel => |toplevel| {
-            scene_tree = toplevel.wlr_scene_tree.createSceneXdgSurface(xdg_surface) catch {
-                owm.log.err("Failed to create scene tree for popup with Toplevel parent");
-                return error.FailedToCreateSceneTree;
-            };
-        },
-        .LayerSurface => |layer_surface| {
-            scene_tree = layer_surface.wlr_scene_layer_surface.tree.createSceneXdgSurface(xdg_surface) catch {
-                owm.log.err("Failed to create scene tree for popup with LayerSurface parent");
-                return error.FailedToCreateSceneTree;
-            };
-        },
-        .Popup => |popup| {
-            scene_tree = popup.wlr_scene_tree.createSceneXdgSurface(xdg_surface) catch {
-                owm.log.err("Failed to create scene tree for popup with Popup parent");
-                return error.FailedToCreateSceneTree;
-            };
-        },
-    }
+    const parent_scene_tree = parent.getSceneTree() catch {
+        owm.log.err("Failed to get paretn scene tree on popup create request");
+        return error.ParentSceneTreeNotFound;
+    };
+    const scene_tree = parent_scene_tree.createSceneXdgSurface(xdg_surface) catch {
+        owm.log.err("Failed to create scene tree for popup with Toplevel parent");
+        return error.FailedToCreateSceneTree;
+    };
 
     xdg_surface.data = scene_tree;
 
@@ -59,7 +43,6 @@ pub fn create(
     errdefer owm.c_alloc.destroy(popup);
 
     popup.* = .{
-        .id = idx,
         .wlr_xdg_popup = wlr_xdg_popup,
         .wlr_scene_tree = scene_tree,
         .parent = parent.*,

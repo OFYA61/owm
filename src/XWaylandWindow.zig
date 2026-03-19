@@ -6,6 +6,12 @@ const wlr = @import("wlroots");
 
 wlr_xwayland_surface: *wlr.XwaylandSurface,
 wlr_scene_tree: ?*wlr.SceneTree = null,
+managed_window: owm.ManagedWindow,
+current_output: *owm.Output,
+
+x: i32 = 0,
+y: i32 = 0,
+
 request_configure_listener: wl.Listener(*wlr.XwaylandSurface.event.Configure) = .init(requestConfigureCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
 unmap_listener: wl.Listener(void) = .init(unmapCallback),
@@ -14,12 +20,16 @@ associate_listener: wl.Listener(void) = .init(associateCallback),
 dissociate_listener: wl.Listener(void) = .init(dissociateCallback),
 destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
-pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) error{OutOfMemory}!*XWaylandWindow {
+pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) error{ OutOfMemory, CursorNotOnOutput }!*XWaylandWindow {
     const xwayland_window = try owm.c_alloc.create(XWaylandWindow);
     errdefer owm.c_alloc.destroy(xwayland_window);
 
+    const output = owm.server.outputAtCursor() orelse return error.CursorNotOnOutput;
+
     xwayland_window.* = .{
         .wlr_xwayland_surface = wlr_xwayland_surface,
+        .managed_window = owm.ManagedWindow.xWaylandWindow(xwayland_window),
+        .current_output = output,
     };
     wlr_xwayland_surface.events.request_configure.add(&xwayland_window.request_configure_listener);
     wlr_xwayland_surface.events.associate.add(&xwayland_window.associate_listener);
@@ -68,6 +78,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
             owm.log.err("XWaylandWindow: Failed to create subsurface for menu");
             return;
         };
+        xwayland_window.wlr_scene_tree.?.node.raiseToTop();
     } else {
         owm.log.debug("XWaylandWindow: Creating subsurface for app");
         xwayland_window.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
@@ -80,6 +91,9 @@ fn mapCallback(listener: *wl.Listener(void)) void {
         xwayland_window.wlr_xwayland_surface.y,
     );
     xwayland_window.wlr_xwayland_surface.activate(true);
+    xwayland_window.x = xwayland_window.wlr_scene_tree.?.node.x;
+    xwayland_window.y = xwayland_window.wlr_scene_tree.?.node.y;
+    xwayland_window.wlr_scene_tree.?.node.data = &xwayland_window.managed_window;
 }
 
 fn unmapCallback(listener: *wl.Listener(void)) void {

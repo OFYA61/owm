@@ -45,7 +45,7 @@ request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection)
 
 wlr_cursor: *wlr.Cursor,
 wlr_cursor_manager: *wlr.XcursorManager,
-grabbed_toplevel: ?*owm.Toplevel = null,
+grabbed_window: ?*owm.Toplevel = null,
 cursor_mode: enum { passthrough, move, resize } = .passthrough,
 grab_x: f64 = 0,
 grab_y: f64 = 0,
@@ -269,7 +269,7 @@ pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
 
 pub fn resetCursorMode(self: *Server) void {
     self.cursor_mode = .passthrough;
-    self.grabbed_toplevel = null;
+    self.grabbed_window = null;
 }
 
 const ViewAtResponse = struct {
@@ -305,14 +305,14 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
 fn processCursorMotion(self: *Server, time: u32) void {
     if (self.cursor_mode == .move) {
-        const toplevel = self.grabbed_toplevel.?;
+        const toplevel = self.grabbed_window.?;
         toplevel.setPos(
             @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
             @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
         );
         return;
     } else if (self.cursor_mode == .resize) {
-        const toplevel = self.grabbed_toplevel.?;
+        const toplevel = self.grabbed_window.?;
         const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
         const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
 
@@ -524,7 +524,7 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
     const server: *Server = @fieldParentPtr("cursor_button_listener", listener);
     _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
     if (event.state == .released) {
-        if (server.grabbed_toplevel) |toplevel| {
+        if (server.grabbed_window) |toplevel| {
             if (server.outputAtCursor()) |output| {
                 toplevel.current_output = output;
             }
@@ -541,6 +541,9 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
                 },
                 .Popup => |popup| {
                     _ = popup;
+                },
+                .XWaylandWindow => |xwayland_window| {
+                    _ = xwayland_window;
                 },
             }
         } else if (server.focused_window) |toplevel| {

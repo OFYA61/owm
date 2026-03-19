@@ -142,7 +142,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Toplevel = @fieldParentPtr("unmap_listener", listener);
-    if (owm.server.grabbed_toplevel == toplevel) {
+    if (owm.server.grabbed_window == toplevel) {
         owm.server.resetCursorMode();
     }
     toplevel.link.remove();
@@ -193,7 +193,7 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
         const new_y = @as(c_int, @intFromFloat(owm.server.wlr_cursor.y)) - 3;
         toplevel.setPos(new_x, new_y);
     }
-    owm.server.grabbed_toplevel = toplevel;
+    owm.server.grabbed_window = toplevel;
     owm.server.cursor_mode = .move;
     owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
     owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel.y));
@@ -202,7 +202,7 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Toplevel = @fieldParentPtr("request_resize_listener", listener);
 
-    owm.server.grabbed_toplevel = toplevel;
+    owm.server.grabbed_window = toplevel;
     owm.server.cursor_mode = .resize;
     owm.server.resize_edges = event.edges;
 
