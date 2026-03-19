@@ -1,5 +1,9 @@
+## Run
+
+In another compositor or tty session:
+
 ```bash
-zig build run
+zig build -Doptimize=ReleaseFast run
 ```
 
 ## Commands
