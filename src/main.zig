@@ -1,4 +1,4 @@
-const owm = @import("owm.zig");
+pub const owm = @import("owm.zig");
 
 pub fn main() anyerror!void {
     try owm.init();

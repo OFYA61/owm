@@ -8,8 +8,8 @@ const xkb = @import("xkbcommon");
 
 const owm = @import("owm.zig");
 
-const MIN_TOPLEVEL_WIDTH = 240;
-const MIN_TOPLEVEL_HEIGHT = 135;
+const MIN_CLIENT_WIDTH = 240;
+const MIN_CLIENT_HEIGHT = 135;
 
 wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
@@ -28,24 +28,23 @@ new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
-layer_surfaces: wl.list.Head(owm.LayerSurface, .link) = undefined,
 
 wlr_xwayland: *wlr.Xwayland,
 xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylandNewSurfaceCallback),
 
 wlr_xdg_shell: *wlr.XdgShell,
-toplevels: wl.list.Head(owm.Toplevel, .link) = undefined,
+app_clients: wl.list.Head(owm.client.Client, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 
 wlr_seat: *wlr.Seat,
-focused_window: ?*owm.Toplevel = null,
+focused_client: ?*owm.client.Client = null,
 new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
 request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
 request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
 
 wlr_cursor: *wlr.Cursor,
 wlr_cursor_manager: *wlr.XcursorManager,
-grabbed_window: ?*owm.Toplevel = null,
+grabbed_client: ?*owm.client.Client = null,
 cursor_mode: enum { passthrough, move, resize } = .passthrough,
 grab_x: f64 = 0,
 grab_y: f64 = 0,
@@ -109,7 +108,7 @@ pub fn init(self: *Server) anyerror!void {
 
     try self.wlr_renderer.initServer(wl_server);
 
-    self.toplevels.init();
+    self.app_clients.init();
 
     self.outputs.init();
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
@@ -128,7 +127,6 @@ pub fn init(self: *Server) anyerror!void {
     wlr_cursor.events.axis.add(&self.cursor_axis_listener);
     wlr_cursor.events.frame.add(&self.cursor_frame_listener);
 
-    self.layer_surfaces.init();
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 
     wlr_xwayland.events.new_surface.add(&self.xwayland_new_surface_listener);
@@ -191,18 +189,18 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
             };
         },
         xkb.Keysym.m => {
-            if (self.focused_window) |toplevel| {
+            if (self.focused_client) |toplevel| {
                 toplevel.toggleMaximize();
             }
         },
         xkb.Keysym.F1 => {
-            if (self.focused_window) |_| {
-                const first_toplevel = self.toplevels.first().?;
-                first_toplevel.link.remove();
-                self.toplevels.append(first_toplevel);
-                self.focusToplevel(self.toplevels.first().?);
-            } else if (self.toplevels.first()) |first_toplevel| {
-                self.focusToplevel(first_toplevel);
+            if (self.focused_client) |_| {
+                const first_client = self.app_clients.first().?;
+                first_client.link.remove();
+                self.app_clients.append(first_client);
+                self.focusClient(self.app_clients.first().?);
+            } else if (self.app_clients.first()) |first_client| {
+                self.focusClient(first_client);
             }
         },
         else => return false,
@@ -210,27 +208,29 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
     return true;
 }
 
-pub fn focusToplevel(self: *Server, toplevel: *owm.Toplevel) void {
-    if (self.focused_window) |prev_toplevel| {
-        if (prev_toplevel == toplevel) {
+pub fn focusClient(self: *Server, new_client: *owm.client.Client) void {
+    if (!new_client.isFocusable()) {
+        return;
+    }
+    if (self.focused_client) |prev_client| {
+        if (prev_client == new_client) {
             return;
         }
-
-        prev_toplevel.setFocus(false);
+        prev_client.setFocus(false);
     }
 
-    toplevel.setFocus(true);
+    new_client.setFocus(true);
 
     const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
     self.wlr_seat.keyboardNotifyEnter(
-        toplevel.getWlrSurface(),
+        new_client.getWlrSurface(),
         wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
         &wlr_keyboard.modifiers,
     );
 
-    toplevel.link.remove();
-    self.toplevels.prepend(toplevel);
-    self.focused_window = toplevel;
+    new_client.link.remove();
+    self.app_clients.prepend(new_client);
+    self.focused_client = new_client;
 }
 
 fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
@@ -269,14 +269,14 @@ pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
 
 pub fn resetCursorMode(self: *Server) void {
     self.cursor_mode = .passthrough;
-    self.grabbed_window = null;
+    self.grabbed_client = null;
 }
 
 const ViewAtResponse = struct {
     sx: f64,
     sy: f64,
     wlr_surface: *wlr.Surface,
-    window: *owm.ManagedWindow,
+    client: *owm.client.Client,
 };
 
 fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
@@ -289,12 +289,12 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
-            if (owm.ManagedWindow.fromOpaquePtr(n.node.data)) |node_data| {
+            if (owm.client.Client.fromOpaquePtr(n.node.data)) |client| {
                 return ViewAtResponse{
                     .sx = sx,
                     .sy = sy,
                     .wlr_surface = scene_surface.surface,
-                    .window = node_data,
+                    .client = client,
                 };
             }
         }
@@ -305,14 +305,14 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
 fn processCursorMotion(self: *Server, time: u32) void {
     if (self.cursor_mode == .move) {
-        const toplevel = self.grabbed_window.?;
-        toplevel.setPos(
+        const grabbed_client = self.grabbed_client.?;
+        grabbed_client.setPos(
             @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
             @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
         );
         return;
     } else if (self.cursor_mode == .resize) {
-        const toplevel = self.grabbed_window.?;
+        const grabbed_client = self.grabbed_client.?;
         const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
         const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
 
@@ -323,36 +323,36 @@ fn processCursorMotion(self: *Server, time: u32) void {
 
         if (self.resize_edges.top) {
             new_top = border_y;
-            if (new_top + MIN_TOPLEVEL_HEIGHT >= new_bottom) { // Make sure new_top isn't below new_bottom
-                new_top = new_bottom - MIN_TOPLEVEL_HEIGHT;
+            if (new_top + MIN_CLIENT_HEIGHT >= new_bottom) { // Make sure new_top isn't below new_bottom
+                new_top = new_bottom - MIN_CLIENT_HEIGHT;
             }
         } else if (self.resize_edges.bottom) {
             new_bottom = border_y;
-            if (new_bottom - MIN_TOPLEVEL_HEIGHT <= new_top) { // Make sure new_bottom isn't above new_top
-                new_bottom = new_top + MIN_TOPLEVEL_HEIGHT;
+            if (new_bottom - MIN_CLIENT_HEIGHT <= new_top) { // Make sure new_bottom isn't above new_top
+                new_bottom = new_top + MIN_CLIENT_HEIGHT;
             }
         }
 
         if (self.resize_edges.left) {
             new_left = border_x;
-            if (new_left + MIN_TOPLEVEL_WIDTH >= new_right) { // Make sure new_left isn't right of new_right
-                new_left = new_right - MIN_TOPLEVEL_WIDTH;
+            if (new_left + MIN_CLIENT_WIDTH >= new_right) { // Make sure new_left isn't right of new_right
+                new_left = new_right - MIN_CLIENT_WIDTH;
             }
         } else if (self.resize_edges.right) {
             new_right = border_x;
-            if (new_right - MIN_TOPLEVEL_WIDTH <= new_left) { // Make sure new_right isn't left of new_left
-                new_right = new_left + MIN_TOPLEVEL_WIDTH;
+            if (new_right - MIN_CLIENT_WIDTH <= new_left) { // Make sure new_right isn't left of new_left
+                new_right = new_left + MIN_CLIENT_WIDTH;
             }
         }
 
-        const box = toplevel.getGeom();
+        const box = grabbed_client.getGeom();
         const new_x = new_left - box.x;
         const new_y = new_top - box.y;
-        toplevel.setPos(new_x, new_y);
+        grabbed_client.setPos(new_x, new_y);
 
         const new_width: i32 = new_right - new_left;
         const new_height: i32 = new_bottom - new_top;
-        toplevel.setSize(new_width, new_height);
+        grabbed_client.setSize(new_width, new_height);
         return;
     }
 
@@ -452,17 +452,20 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 }
 
 fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
+    // TODO: reintroduce XWayland Clients
     _ = listener;
-    _ = owm.XWaylandWindow.create(wlr_xwayland_surface) catch |err| {
-        owm.log.errf("Failed to allocate XWaylandWindow: {}", .{err});
-        return;
-    };
+    _ = wlr_xwayland_surface;
+    // _ = listener;
+    // _ = owm.XWaylandWindow.create(wlr_xwayland_surface) catch |err| {
+    //     owm.log.errf("Failed to allocate XWaylandWindow: {}", .{err});
+    //     return;
+    // };
 }
 
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-    _ = owm.Toplevel.create(wlr_xdg_toplevel) catch {
-        owm.log.err("Failed to allocate new toplevel");
+    _ = owm.client.Client.newToplevel(wlr_xdg_toplevel) catch |err| {
+        owm.log.errf("Failed to allocate new toplevel {}", .{err});
         wlr_xdg_toplevel.sendClose();
         return;
     };
@@ -524,31 +527,18 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
     const server: *Server = @fieldParentPtr("cursor_button_listener", listener);
     _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
     if (event.state == .released) {
-        if (server.grabbed_window) |toplevel| {
+        if (server.grabbed_client) |grabbed_client| {
             if (server.outputAtCursor()) |output| {
-                toplevel.current_output = output;
+                grabbed_client.setCurrentOutput(output);
             }
         }
         server.resetCursorMode();
     } else {
         if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
-            switch (result.window.window) {
-                .Toplevel => |toplevel| {
-                    server.focusToplevel(toplevel);
-                },
-                .LayerSurface => |layer_surface| {
-                    _ = layer_surface;
-                },
-                .Popup => |popup| {
-                    _ = popup;
-                },
-                .XWaylandWindow => |xwayland_window| {
-                    _ = xwayland_window;
-                },
-            }
-        } else if (server.focused_window) |toplevel| {
+            server.focusClient(result.client);
+        } else if (server.focused_client) |toplevel| {
             toplevel.setFocus(false);
-            server.focused_window = null;
+            server.focused_client = null;
             server.wlr_seat.keyboardNotifyClearFocus();
         }
     }
@@ -573,16 +563,19 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
     server.wlr_seat.pointerNotifyFrame();
 }
 
+// TODO: reintroduce layer surface clients
 fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
-    const server: *Server = @fieldParentPtr("new_layer_surface_listener", listener);
-
-    if (wlr_layer_surface.output == null) {
-        wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
-    }
-
-    const new_layer_surface = owm.LayerSurface.create(wlr_layer_surface) catch {
-        owm.log.err("Failed to allocate new layer surface");
-        return;
-    };
-    server.layer_surfaces.append(new_layer_surface);
+    _ = listener;
+    _ = wlr_layer_surface;
+    //     const server: *Server = @fieldParentPtr("new_layer_surface_listener", listener);
+    //
+    //     if (wlr_layer_surface.output == null) {
+    //         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
+    //     }
+    //
+    //     const new_layer_surface = owm.LayerSurface.create(wlr_layer_surface) catch {
+    //         owm.log.err("Failed to allocate new layer surface");
+    //         return;
+    //     };
+    //     server.layer_surfaces.append(new_layer_surface);
 }

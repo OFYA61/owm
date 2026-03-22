@@ -26,7 +26,7 @@ destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 pub const ExclusiveZone = struct {
     type: Type,
     size: u32,
-    owner: *owm.LayerSurface,
+    // owner: *owm.LayerSurface,
     pub const Type = enum { Top, Right, Bottom, Left };
 };
 
@@ -198,54 +198,54 @@ pub fn addExclusiveZone(self: *Output, exclusive_zone: ExclusiveZone) error{OutO
     self.recalculateWorkArea();
 }
 
-pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.LayerSurface) void {
-    var index: ?usize = null;
-    for (self.exclusive_zones.items, 0..) |*zone, i| {
-        if (zone.owner == owner) {
-            index = i;
-        }
-    }
-
-    if (index) |i| {
-        _ = self.exclusive_zones.orderedRemove(i);
-        self.recalculateWorkArea();
-
-        // Rearrange the position of the owners of exclusive zones
-        var top: c_int = 0;
-        var bottom: c_int = 0;
-        var left: c_int = 0;
-        var right: c_int = 0;
-        for (self.exclusive_zones.items) |zone| {
-            const size: c_int = @intCast(zone.size);
-            var new_x: c_int = undefined;
-            var new_y: c_int = undefined;
-
-            switch (zone.type) {
-                .Top => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + top;
-                    top += size;
-                },
-                .Bottom => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + self.area.height - bottom;
-                    bottom += size;
-                },
-                .Left => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + top;
-                    left += size;
-                },
-                .Right => {
-                    new_x = self.area.x + self.area.width - right;
-                    new_y = self.area.y + top;
-                    right += size;
-                },
-            }
-            zone.owner.setPos(new_x, new_y);
-        }
-    }
-}
+// pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.LayerSurface) void {
+//     var index: ?usize = null;
+//     for (self.exclusive_zones.items, 0..) |*zone, i| {
+//         if (zone.owner == owner) {
+//             index = i;
+//         }
+//     }
+//
+//     if (index) |i| {
+//         _ = self.exclusive_zones.orderedRemove(i);
+//         self.recalculateWorkArea();
+//
+//         // Rearrange the position of the owners of exclusive zones
+//         var top: c_int = 0;
+//         var bottom: c_int = 0;
+//         var left: c_int = 0;
+//         var right: c_int = 0;
+//         for (self.exclusive_zones.items) |zone| {
+//             const size: c_int = @intCast(zone.size);
+//             var new_x: c_int = undefined;
+//             var new_y: c_int = undefined;
+//
+//             switch (zone.type) {
+//                 .Top => {
+//                     new_x = self.area.x + left;
+//                     new_y = self.area.y + top;
+//                     top += size;
+//                 },
+//                 .Bottom => {
+//                     new_x = self.area.x + left;
+//                     new_y = self.area.y + self.area.height - bottom;
+//                     bottom += size;
+//                 },
+//                 .Left => {
+//                     new_x = self.area.x + left;
+//                     new_y = self.area.y + top;
+//                     left += size;
+//                 },
+//                 .Right => {
+//                     new_x = self.area.x + self.area.width - right;
+//                     new_y = self.area.y + top;
+//                     right += size;
+//                 },
+//             }
+//             zone.owner.setPos(new_x, new_y);
+//         }
+//     }
+// }
 
 fn recalculateWorkArea(self: *Output) void {
     var top: c_int = 0;

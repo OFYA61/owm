@@ -1,17 +1,13 @@
-//! Reprezents popups that get created by other clients
-pub const Popup = @This();
-
-const std = @import("std");
+const Popup = @This();
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
-const owm = @import("owm.zig");
+const owm = @import("root").owm;
+const client = owm.client;
 
 wlr_xdg_popup: *wlr.XdgPopup,
-wlr_scene_tree: *wlr.SceneTree,
-parent: owm.ManagedWindow,
-managed_window: owm.ManagedWindow,
+parent: *client.Client,
 
 commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
 reposition_listener: wl.Listener(void) = .init(repositionCallback),
@@ -20,48 +16,33 @@ destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
 pub fn create(
     wlr_xdg_popup: *wlr.XdgPopup,
-    parent: *owm.ManagedWindow,
-) error{
-    FailedToCreateSceneTree,
-    OutOfMemory,
-    ParentSceneTreeNotFound,
-}!*Popup {
-    const xdg_surface = wlr_xdg_popup.base;
-
-    const parent_scene_tree = parent.getSceneTree() catch {
-        owm.log.err("Failed to get paretn scene tree on popup create request");
-        return error.ParentSceneTreeNotFound;
-    };
-    const scene_tree = parent_scene_tree.createSceneXdgSurface(xdg_surface) catch {
-        owm.log.err("Failed to create scene tree for popup with Toplevel parent");
-        return error.FailedToCreateSceneTree;
-    };
-
-    xdg_surface.data = scene_tree;
-
-    const popup = try owm.c_alloc.create(Popup);
-    errdefer owm.c_alloc.destroy(popup);
-
-    popup.* = .{
+    parent: *owm.client.Client,
+) client.Client.Error!Popup {
+    return .{
         .wlr_xdg_popup = wlr_xdg_popup,
-        .wlr_scene_tree = scene_tree,
-        .parent = parent.*,
-        .managed_window = owm.ManagedWindow.popup(popup),
+        .parent = parent,
     };
+}
 
-    xdg_surface.surface.events.commit.add(&popup.commit_listener);
-    wlr_xdg_popup.events.reposition.add(&popup.reposition_listener);
-    xdg_surface.events.new_popup.add(&popup.new_popup_listener);
-    wlr_xdg_popup.events.destroy.add(&popup.destroy_listener);
+pub fn setup(self: *Popup) void {
+    self.wlr_xdg_popup.base.surface.events.commit.add(&self.commit_listener);
+    self.wlr_xdg_popup.events.reposition.add(&self.reposition_listener);
+    self.wlr_xdg_popup.base.events.new_popup.add(&self.new_popup_listener);
+    self.wlr_xdg_popup.events.destroy.add(&self.destroy_listener);
+}
 
-    return popup;
+pub fn getWlrSurface(self: *Popup) *wlr.Surface {
+    return self.wlr_xdg_popup.base.surface;
+}
+
+pub fn getGeom(self: *Popup) wlr.Box {
+    return self.wlr_xdg_popup.base.geometry;
 }
 
 fn unconstrain(self: *Popup) void {
     self.wlr_xdg_popup.unconstrainFromBox(&self.parent.getUnconstrainBox());
 }
 
-/// Called when a new surface state is commited
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
     const popup: *Popup = @fieldParentPtr("commit_listener", listener);
     if (popup.wlr_xdg_popup.base.initial_commit) {
@@ -77,7 +58,7 @@ fn repositionCallback(listener: *wl.Listener(void)) void {
 
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const popup: *Popup = @fieldParentPtr("new_popup_listener", listener);
-    _ = owm.Popup.create(wlr_xdg_popup, &popup.managed_window) catch |err| {
+    _ = client.Client.newPopup(wlr_xdg_popup, client.Client.from(popup)) catch |err| {
         owm.log.errf("Failed to create XDG Popup for toplevel {}", .{err});
         return;
     };
@@ -91,5 +72,5 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     popup.new_popup_listener.link.remove();
     popup.destroy_listener.link.remove();
 
-    owm.c_alloc.destroy(popup);
+    owm.c_alloc.destroy(client.Client.from(popup));
 }
