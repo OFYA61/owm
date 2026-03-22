@@ -59,7 +59,7 @@ fn repositionCallback(listener: *wl.Listener(void)) void {
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const popup: *Popup = @fieldParentPtr("new_popup_listener", listener);
     _ = client.Client.newPopup(wlr_xdg_popup, client.Client.from(popup)) catch |err| {
-        owm.log.errf("Failed to create XDG Popup for toplevel {}", .{err});
+        owm.log.errf("Failed to create XDG Popup{}", .{err});
         return;
     };
 }

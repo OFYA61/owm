@@ -4,7 +4,6 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
 const owm = @import("root").owm;
-const Toplevel = owm.client.Toplevel;
 
 pub const Error = error{
     CursorNotOnOutput,
@@ -33,7 +32,7 @@ pub fn newPopup(wlr_xdg_popup: *wlr.XdgPopup, parent: *Client) Error!*Client {
 
     const xdg_surface = wlr_xdg_popup.base;
     const scene_tree = parent_scene_tree.createSceneXdgSurface(xdg_surface) catch {
-        owm.log.err("Failed to create scene tree for popup");
+        owm.log.err("Failed to create scene tree for Popup");
         return error.FailedToCreateSceneTree;
     };
     errdefer scene_tree.node.link.remove();
@@ -78,8 +77,8 @@ fn setup(self: *Client) void {
         .Toplevel => |*t| {
             t.setup();
             const work_area = t.current_output.area;
-            const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(Toplevel.SPAWN_SIZE_X, 2);
-            const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(Toplevel.SPAWN_SIZE_Y, 2);
+            const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(owm.client.Toplevel.SPAWN_SIZE_X, 2);
+            const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(owm.client.Toplevel.SPAWN_SIZE_Y, 2);
             self.wlr_scene_tree.?.node.setPosition(spawn_x, spawn_y);
             self.x = spawn_x;
             self.y = spawn_y;
