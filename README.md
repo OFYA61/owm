@@ -1,6 +1,14 @@
+## Setup
+
+1. Install dependencies
+```bash
+sudo pacman -S wayland wayland-protocols pixman libxkbcommon libinput
+```
+2. Install wlroots, see [the offical repository](https://gitlab.freedesktop.org/wlroots/wlroots/) on how to install it.
+
 ## Run
 
-In another compositor or tty session:
+While in a compositor or tty session:
 
 ```bash
 zig build -Doptimize=ReleaseFast run
