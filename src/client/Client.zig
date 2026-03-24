@@ -18,6 +18,7 @@ pub const ClientType = union(enum) {
     LayerSurface: owm.client.LayerSurface,
     Popup: owm.client.Popup,
     Toplevel: owm.client.Toplevel,
+    XWayland: owm.client.XWayland,
 };
 
 wlr_scene_tree: *wlr.SceneTree,
@@ -25,6 +26,29 @@ x: i32 = 0,
 y: i32 = 0,
 link: wl.list.Link = undefined,
 client: ClientType,
+
+pub fn newLayerSurface(wlr_layer_surface: *wlr.LayerSurfaceV1) Error!*Client {
+    var client = try owm.c_alloc.create(Client);
+    errdefer owm.c_alloc.destroy(client);
+
+    const scene_layer_surface = owm.server.scene_tree_foreground.createSceneLayerSurfaceV1(wlr_layer_surface) catch {
+        owm.log.err("Failed to create scene tree for LayerSurface");
+        return Error.FailedToCreateSceneTree;
+    };
+    errdefer scene_layer_surface.tree.node.link.remove();
+    const scene_tree = scene_layer_surface.tree;
+    scene_tree.node.data = client;
+
+    client.* = .{
+        .wlr_scene_tree = scene_tree,
+        .client = .{
+            .LayerSurface = try owm.client.LayerSurface.create(wlr_layer_surface),
+        },
+    };
+
+    client.setup();
+    return client;
+}
 
 pub fn newPopup(wlr_xdg_popup: *wlr.XdgPopup, parent: *Client) Error!*Client {
     var client = try owm.c_alloc.create(Client);
@@ -71,23 +95,12 @@ pub fn newToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) Error!*Client {
     return client;
 }
 
-pub fn newLayerSurface(wlr_layer_surface: *wlr.LayerSurfaceV1) Error!*Client {
+pub fn newXWayland(wlr_xwayland_surface: *wlr.XwaylandSurface) Error!*Client {
     var client = try owm.c_alloc.create(Client);
     errdefer owm.c_alloc.destroy(client);
 
-    const scene_layer_surface = owm.server.scene_tree_foreground.createSceneLayerSurfaceV1(wlr_layer_surface) catch {
-        owm.log.err("Failed to create scene tree for LayerSurface");
-        return Error.FailedToCreateSceneTree;
-    };
-    errdefer scene_layer_surface.tree.node.link.remove();
-    const scene_tree = scene_layer_surface.tree;
-    scene_tree.node.data = client;
-
-    client.* = .{
-        .wlr_scene_tree = scene_tree,
-        .client = .{
-            .LayerSurface = try owm.client.LayerSurface.create(wlr_layer_surface),
-        },
+    client.client = .{
+        .XWayland = try owm.client.XWayland.create(wlr_xwayland_surface),
     };
 
     client.setup();
@@ -111,6 +124,9 @@ fn setup(self: *Client) void {
             self.x = spawn_x;
             self.y = spawn_y;
         },
+        .XWayland => |*xw| {
+            xw.setup();
+        },
     }
 }
 
@@ -129,6 +145,7 @@ pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Client {
     return @as(?*Client, @ptrCast(@alignCast(ptr)));
 }
 
+// TODO: consider returning a nullable pointer and handle at the callsite
 pub fn getWlrSurface(self: *Client) *wlr.Surface {
     switch (self.client) {
         .LayerSurface => |*ls| {
@@ -139,6 +156,9 @@ pub fn getWlrSurface(self: *Client) *wlr.Surface {
         },
         .Toplevel => |*t| {
             return t.getWlrSurface();
+        },
+        .XWayland => |*xw| {
+            return xw.wlr_xwayland_surface.surface.?;
         },
     }
 }
@@ -159,6 +179,14 @@ pub fn getGeom(self: *Client) wlr.Box {
         .Toplevel => |*t| {
             return t.getGeom();
         },
+        .XWayland => |*xw| {
+            return .{
+                .x = self.x,
+                .y = self.y,
+                .width = @as(i32, @intCast(xw.wlr_xwayland_surface.width)),
+                .height = @as(i32, @intCast(xw.wlr_xwayland_surface.height)),
+            };
+        },
     }
 }
 
@@ -178,11 +206,11 @@ pub fn getUnconstrainBox(self: *Client) wlr.Box {
         .Popup => |*p| {
             unconstrainBox = p.parent.getUnconstrainBox();
         },
-        // .XWaylandWindow => |xww| {
-        //     unconstrainBox = xww.current_output.area;
-        //     unconstrainBox.x -= xww.x;
-        //     unconstrainBox.y -= xww.y;
-        // },
+        .XWayland => |*xw| {
+            unconstrainBox = xw.current_output.area;
+            unconstrainBox.x -= self.x;
+            unconstrainBox.y -= self.y;
+        },
     }
 
     return unconstrainBox;
@@ -190,9 +218,8 @@ pub fn getUnconstrainBox(self: *Client) wlr.Box {
 
 pub fn isFocusable(self: *Client) bool {
     switch (self.client) {
-        .Popup => |_| return false,
-        .LayerSurface => |_| return false,
-        else => return true,
+        .Toplevel => |_| return true,
+        else => return false,
     }
 }
 

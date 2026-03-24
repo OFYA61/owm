@@ -242,7 +242,7 @@ fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
     var env_map = try std.process.getEnvMap(owm.c_alloc);
     defer env_map.deinit();
     try env_map.put("WAYLAND_DISPLAY", &self.wl_socket);
-    // try env_map.put("DISPLAY", self.wlr_xwayland.display_name);
+    try env_map.put("DISPLAY", std.mem.span(self.wlr_xwayland.display_name));
     child.env_map = &env_map;
 
     try child.spawn();
@@ -452,14 +452,11 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 }
 
 fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
-    // TODO: reintroduce XWayland Clients
     _ = listener;
-    _ = wlr_xwayland_surface;
-    // _ = listener;
-    // _ = owm.XWaylandWindow.create(wlr_xwayland_surface) catch |err| {
-    //     owm.log.errf("Failed to allocate XWaylandWindow: {}", .{err});
-    //     return;
-    // };
+    _ = owm.client.Client.newXWayland(wlr_xwayland_surface) catch |err| {
+        owm.log.errf("Failed to allocate XWayland {}", .{err});
+        return;
+    };
 }
 
 /// Called when a client creates a new toplevel (app window)

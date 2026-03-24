@@ -25,8 +25,8 @@ request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requ
 request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
-pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Client.Error!Self {
-    const output = owm.server.outputAtCursor() orelse return client.Client.Error.CursorNotOnOutput;
+pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
+    const output = owm.server.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
     return .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,
         .current_output = output,

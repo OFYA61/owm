@@ -17,10 +17,10 @@ commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 destroy_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(destroyCallback),
 
-pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) client.Client.Error!Self {
+pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) client.Error!Self {
     return .{
         .wlr_layer_surface = wlr_layer_surface,
-        .current_output = owm.Output.fromOpaquePtr(wlr_layer_surface.output.?.data) orelse return client.Client.Error.FailedToDetermineOutout,
+        .current_output = owm.Output.fromOpaquePtr(wlr_layer_surface.output.?.data) orelse return client.Error.FailedToDetermineOutout,
     };
 }
 

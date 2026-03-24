@@ -17,7 +17,7 @@ destroy_listener: wl.Listener(void) = .init(destroyCallback),
 pub fn create(
     wlr_xdg_popup: *wlr.XdgPopup,
     parent: *owm.client.Client,
-) client.Client.Error!Self {
+) client.Error!Self {
     return .{
         .wlr_xdg_popup = wlr_xdg_popup,
         .parent = parent,
