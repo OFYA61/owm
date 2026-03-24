@@ -2,20 +2,16 @@
 
 const std = @import("std");
 
-/// Use for wlroots related allocations
+/// Used for wlroots related allocations
 pub const c_alloc = std.heap.c_allocator;
 pub const alloc = std.heap.page_allocator;
 
 pub const log = @import("log/log.zig");
 pub const config = @import("config/config.zig");
+pub const client = @import("client/client.zig");
 
 pub const Keyboard = @import("Keyboard.zig");
-pub const LayerSurface = @import("LayerSurface.zig");
-pub const ManagedWindow = @import("ManagedWindow.zig");
 pub const Output = @import("Output.zig");
-pub const Popup = @import("Popup.zig");
-pub const Toplevel = @import("Toplevel.zig");
-pub const XWaylandWindow = @import("XWaylandWindow.zig");
 
 /// Wayland server instance
 pub var server: @import("Server.zig") = undefined;
