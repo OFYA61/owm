@@ -1,4 +1,4 @@
-pub const Toplevel = @This();
+const Self = @This();
 
 const std = @import("std");
 
@@ -25,8 +25,8 @@ request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requ
 request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
-pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Client.Error!Toplevel {
-    const output = owm.server.outputAtCursor() orelse return error.CursorNotOnOutput;
+pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Client.Error!Self {
+    const output = owm.server.outputAtCursor() orelse return client.Client.Error.CursorNotOnOutput;
     return .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,
         .current_output = output,
@@ -34,7 +34,7 @@ pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Client.Error!Toplevel {
     };
 }
 
-pub fn setup(self: *Toplevel) void {
+pub fn setup(self: *Self) void {
     self.wlr_xdg_toplevel.base.events.new_popup.add(&self.new_popup_listener);
     self.wlr_xdg_toplevel.base.surface.events.map.add(&self.map_listener);
     self.wlr_xdg_toplevel.base.surface.events.unmap.add(&self.unmap_listener);
@@ -46,37 +46,37 @@ pub fn setup(self: *Toplevel) void {
     self.wlr_xdg_toplevel.events.request_fullscreen.add(&self.request_fullscreen_listener);
 }
 
-pub fn getWlrSurface(self: *Toplevel) *wlr.Surface {
+pub fn getWlrSurface(self: *Self) *wlr.Surface {
     return self.wlr_xdg_toplevel.base.surface;
 }
 
-pub fn checkSurfaceMatch(self: *Toplevel, surface: *wlr.Surface) bool {
+pub fn checkSurfaceMatch(self: *Self, surface: *wlr.Surface) bool {
     return self.wlr_xdg_toplevel.base.surface == surface;
 }
 
-pub fn setFocus(self: *Toplevel, focus: bool) void {
+pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
         client.Client.from(self).wlr_scene_tree.?.node.raiseToTop();
     }
 }
 
-pub fn setSize(self: *Toplevel, new_width: i32, new_height: i32) void {
+pub fn setSize(self: *Self, new_width: i32, new_height: i32) void {
     _ = self.wlr_xdg_toplevel.setSize(new_width, new_height);
 }
 
-pub fn setPos(self: *Toplevel, new_x: c_int, new_y: c_int) void {
+pub fn setPos(self: *Self, new_x: c_int, new_y: c_int) void {
     var toplevel_client = client.Client.from(self);
     toplevel_client.x = new_x;
     toplevel_client.y = new_y;
     toplevel_client.wlr_scene_tree.?.node.setPosition(new_x, new_y);
 }
 
-pub fn getGeom(self: *Toplevel) wlr.Box {
+pub fn getGeom(self: *Self) wlr.Box {
     return self.wlr_xdg_toplevel.base.geometry;
 }
 
-pub fn toggleMaximize(self: *Toplevel) void {
+pub fn toggleMaximize(self: *Self) void {
     var toplevel_client = client.Client.from(self);
     if (self.wlr_xdg_toplevel.current.maximized) {
         const box = self.box_before_maximize;
@@ -104,7 +104,7 @@ pub fn toggleMaximize(self: *Toplevel) void {
 }
 
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-    const toplevel: *Toplevel = @fieldParentPtr("new_popup_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("new_popup_listener", listener);
     _ = client.Client.newPopup(wlr_xdg_popup, client.Client.from(toplevel)) catch |err| {
         owm.log.errf("Failed to create XDG Popup for toplevel {}", .{err});
         return;
@@ -113,7 +113,7 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 
 /// Called when the surface is mapped, or ready to display on screen
 fn mapCallback(listener: *wl.Listener(void)) void {
-    const toplevel: *Toplevel = @fieldParentPtr("map_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const toplevel_client = client.Client.from(toplevel);
     owm.server.app_clients.prepend(toplevel_client);
     owm.server.focusClient(toplevel_client);
@@ -121,7 +121,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
-    const toplevel: *Toplevel = @fieldParentPtr("unmap_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("unmap_listener", listener);
     const toplevel_client = client.Client.from(toplevel);
     if (owm.server.grabbed_client == toplevel_client) {
         owm.server.resetCursorMode();
@@ -131,7 +131,7 @@ fn unmapCallback(listener: *wl.Listener(void)) void {
 
 /// Called when the surface state is committed
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
-    const toplevel: *Toplevel = @fieldParentPtr("commit_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("commit_listener", listener);
     if (toplevel.wlr_xdg_toplevel.base.initial_commit) {
         // When an xdg_surface performs an initial commit, the compositor must
         // reply with a configure so the client can map the surface.
@@ -145,7 +145,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
-    const toplevel: *Toplevel = @fieldParentPtr("destroy_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("destroy_listener", listener);
 
     toplevel.new_popup_listener.link.remove();
     toplevel.map_listener.link.remove();
@@ -165,7 +165,7 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
 }
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
-    const toplevel: *Toplevel = @fieldParentPtr("request_move_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("request_move_listener", listener);
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
@@ -183,7 +183,7 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
-    const toplevel: *Toplevel = @fieldParentPtr("request_resize_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("request_resize_listener", listener);
     const toplevel_client = client.Client.from(toplevel);
 
     owm.server.grabbed_client = toplevel_client;
@@ -203,7 +203,7 @@ fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), 
 }
 
 fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
-    const toplevel: *Toplevel = @fieldParentPtr("request_maximize_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("request_maximize_listener", listener);
     if (!toplevel.wlr_xdg_toplevel.base.initialized) {
         return;
     }
@@ -212,7 +212,7 @@ fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
 }
 
 fn requestFullscreenCallback(listener: *wl.Listener(void)) void {
-    const toplevel: *Toplevel = @fieldParentPtr("request_fullscreen_listener", listener);
+    const toplevel: *Self = @fieldParentPtr("request_fullscreen_listener", listener);
     if (!toplevel.wlr_xdg_toplevel.base.initialized) {
         return;
     }

@@ -1,4 +1,4 @@
-const Popup = @This();
+const Self = @This();
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
@@ -17,34 +17,34 @@ destroy_listener: wl.Listener(void) = .init(destroyCallback),
 pub fn create(
     wlr_xdg_popup: *wlr.XdgPopup,
     parent: *owm.client.Client,
-) client.Client.Error!Popup {
+) client.Client.Error!Self {
     return .{
         .wlr_xdg_popup = wlr_xdg_popup,
         .parent = parent,
     };
 }
 
-pub fn setup(self: *Popup) void {
+pub fn setup(self: *Self) void {
     self.wlr_xdg_popup.base.surface.events.commit.add(&self.commit_listener);
     self.wlr_xdg_popup.events.reposition.add(&self.reposition_listener);
     self.wlr_xdg_popup.base.events.new_popup.add(&self.new_popup_listener);
     self.wlr_xdg_popup.events.destroy.add(&self.destroy_listener);
 }
 
-pub fn getWlrSurface(self: *Popup) *wlr.Surface {
+pub fn getWlrSurface(self: *Self) *wlr.Surface {
     return self.wlr_xdg_popup.base.surface;
 }
 
-pub fn getGeom(self: *Popup) wlr.Box {
+pub fn getGeom(self: *Self) wlr.Box {
     return self.wlr_xdg_popup.base.geometry;
 }
 
-fn unconstrain(self: *Popup) void {
+fn unconstrain(self: *Self) void {
     self.wlr_xdg_popup.unconstrainFromBox(&self.parent.getUnconstrainBox());
 }
 
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
-    const popup: *Popup = @fieldParentPtr("commit_listener", listener);
+    const popup: *Self = @fieldParentPtr("commit_listener", listener);
     if (popup.wlr_xdg_popup.base.initial_commit) {
         popup.unconstrain();
         _ = popup.wlr_xdg_popup.base.scheduleConfigure();
@@ -52,12 +52,12 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 }
 
 fn repositionCallback(listener: *wl.Listener(void)) void {
-    const popup: *Popup = @fieldParentPtr("reposition_listener", listener);
+    const popup: *Self = @fieldParentPtr("reposition_listener", listener);
     popup.unconstrain();
 }
 
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-    const popup: *Popup = @fieldParentPtr("new_popup_listener", listener);
+    const popup: *Self = @fieldParentPtr("new_popup_listener", listener);
     _ = client.Client.newPopup(wlr_xdg_popup, client.Client.from(popup)) catch |err| {
         owm.log.errf("Failed to create XDG Popup{}", .{err});
         return;
@@ -65,7 +65,7 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
-    const popup: *Popup = @fieldParentPtr("destroy_listener", listener);
+    const popup: *Self = @fieldParentPtr("destroy_listener", listener);
 
     popup.commit_listener.link.remove();
     popup.reposition_listener.link.remove();
