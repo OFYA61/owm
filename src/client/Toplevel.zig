@@ -65,13 +65,6 @@ pub fn setSize(self: *Self, new_width: i32, new_height: i32) void {
     _ = self.wlr_xdg_toplevel.setSize(new_width, new_height);
 }
 
-pub fn setPos(self: *Self, new_x: c_int, new_y: c_int) void {
-    var toplevel_client = client.Client.from(self);
-    toplevel_client.x = new_x;
-    toplevel_client.y = new_y;
-    toplevel_client.wlr_scene_tree.?.node.setPosition(new_x, new_y);
-}
-
 pub fn getGeom(self: *Self) wlr.Box {
     return self.wlr_xdg_toplevel.base.geometry;
 }
@@ -81,7 +74,7 @@ pub fn toggleMaximize(self: *Self) void {
     if (self.wlr_xdg_toplevel.current.maximized) {
         const box = self.box_before_maximize;
         self.setSize(box.width, box.height);
-        self.setPos(box.x, box.y);
+        toplevel_client.setPos(box.x, box.y);
         _ = self.wlr_xdg_toplevel.setMaximized(false);
     } else {
         const output_work_area = self.current_output.work_area;
@@ -166,16 +159,16 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
     const toplevel: *Self = @fieldParentPtr("request_move_listener", listener);
+    const toplevel_client = client.Client.from(toplevel);
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
         const new_x = @as(c_int, @intFromFloat(owm.server.wlr_cursor.x)) - @divFloor(box.width, 2);
         const new_y = @as(c_int, @intFromFloat(owm.server.wlr_cursor.y)) - 3;
-        toplevel.setPos(new_x, new_y);
+        toplevel_client.setPos(new_x, new_y);
     }
 
-    const toplevel_client = client.Client.from(toplevel);
     owm.server.grabbed_client = toplevel_client;
     owm.server.cursor_mode = .move;
     owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel_client.x));

@@ -563,19 +563,13 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
     server.wlr_seat.pointerNotifyFrame();
 }
 
-// TODO: reintroduce layer surface clients
-fn newLayerSurfaceCallback(listener: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
-    _ = listener;
-    _ = wlr_layer_surface;
-    //     const server: *Server = @fieldParentPtr("new_layer_surface_listener", listener);
-    //
-    //     if (wlr_layer_surface.output == null) {
-    //         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
-    //     }
-    //
-    //     const new_layer_surface = owm.LayerSurface.create(wlr_layer_surface) catch {
-    //         owm.log.err("Failed to allocate new layer surface");
-    //         return;
-    //     };
-    //     server.layer_surfaces.append(new_layer_surface);
+fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
+    if (wlr_layer_surface.output == null) {
+        wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
+    }
+
+    _ = owm.client.Client.newLayerSurface(wlr_layer_surface) catch {
+        owm.log.err("Failed to allocate new layer surface");
+        return;
+    };
 }

@@ -8,12 +8,14 @@ const owm = @import("root").owm;
 pub const Error = error{
     CursorNotOnOutput,
     FailedToCreateSceneTree,
+    FailedToDetermineOutout,
     OutOfMemory,
     ParentSceneTreeNotFound,
     SceneTreeNotFound,
 };
 
 pub const ClientType = union(enum) {
+    LayerSurface: owm.client.LayerSurface,
     Popup: owm.client.Popup,
     Toplevel: owm.client.Toplevel,
 };
@@ -28,12 +30,12 @@ pub fn newPopup(wlr_xdg_popup: *wlr.XdgPopup, parent: *Client) Error!*Client {
     var client = try owm.c_alloc.create(Client);
     errdefer owm.c_alloc.destroy(client);
 
-    const parent_scene_tree = parent.wlr_scene_tree orelse return error.ParentSceneTreeNotFound;
+    const parent_scene_tree = parent.wlr_scene_tree orelse return Error.ParentSceneTreeNotFound;
 
     const xdg_surface = wlr_xdg_popup.base;
     const scene_tree = parent_scene_tree.createSceneXdgSurface(xdg_surface) catch {
         owm.log.err("Failed to create scene tree for Popup");
-        return error.FailedToCreateSceneTree;
+        return Error.FailedToCreateSceneTree;
     };
     errdefer scene_tree.node.link.remove();
     scene_tree.node.data = client;
@@ -54,7 +56,7 @@ pub fn newToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) Error!*Client {
 
     const scene_tree = owm.server.scene_tree_apps.createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         owm.log.err("Failed to create scene tree for Toplevel");
-        return error.FailedToCreateSceneTree;
+        return Error.FailedToCreateSceneTree;
     };
     errdefer scene_tree.node.link.remove();
     scene_tree.node.data = client;
@@ -69,8 +71,34 @@ pub fn newToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) Error!*Client {
     return client;
 }
 
+pub fn newLayerSurface(wlr_layer_surface: *wlr.LayerSurfaceV1) Error!*Client {
+    var client = try owm.c_alloc.create(Client);
+    errdefer owm.c_alloc.destroy(client);
+
+    const scene_layer_surface = owm.server.scene_tree_foreground.createSceneLayerSurfaceV1(wlr_layer_surface) catch {
+        owm.log.err("Failed to create scene tree for LayerSurface");
+        return Error.FailedToCreateSceneTree;
+    };
+    errdefer scene_layer_surface.tree.node.link.remove();
+    const scene_tree = scene_layer_surface.tree;
+    scene_tree.node.data = client;
+
+    client.* = .{
+        .wlr_scene_tree = scene_tree,
+        .client = .{
+            .LayerSurface = try owm.client.LayerSurface.create(wlr_layer_surface),
+        },
+    };
+
+    client.setup();
+    return client;
+}
+
 fn setup(self: *Client) void {
     switch (self.client) {
+        .LayerSurface => |*ls| {
+            ls.setup();
+        },
         .Popup => |*p| {
             p.setup();
         },
@@ -103,6 +131,9 @@ pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Client {
 
 pub fn getWlrSurface(self: *Client) *wlr.Surface {
     switch (self.client) {
+        .LayerSurface => |*ls| {
+            return ls.wlr_layer_surface.surface;
+        },
         .Popup => |*p| {
             return p.wlr_xdg_popup.base.surface;
         },
@@ -114,6 +145,14 @@ pub fn getWlrSurface(self: *Client) *wlr.Surface {
 
 pub fn getGeom(self: *Client) wlr.Box {
     switch (self.client) {
+        .LayerSurface => |*ls| {
+            return .{
+                .x = self.x,
+                .y = self.y,
+                .width = @as(i32, @intCast(ls.wlr_layer_surface.current.actual_width)),
+                .height = @as(i32, @intCast(ls.wlr_layer_surface.current.actual_height)),
+            };
+        },
         .Popup => |*p| {
             return p.getGeom();
         },
@@ -131,11 +170,11 @@ pub fn getUnconstrainBox(self: *Client) wlr.Box {
             unconstrainBox.x -= self.x;
             unconstrainBox.y -= self.y;
         },
-        // .LayerSurface => |ls| {
-        //     unconstrainBox = ls.output.area;
-        //     unconstrainBox.x -= ls.x;
-        //     unconstrainBox.y -= ls.y;
-        // },
+        .LayerSurface => |ls| {
+            unconstrainBox = ls.current_output.area;
+            unconstrainBox.x -= self.x;
+            unconstrainBox.y -= self.y;
+        },
         .Popup => |*p| {
             unconstrainBox = p.parent.getUnconstrainBox();
         },
@@ -152,61 +191,57 @@ pub fn getUnconstrainBox(self: *Client) wlr.Box {
 pub fn isFocusable(self: *Client) bool {
     switch (self.client) {
         .Popup => |_| return false,
+        .LayerSurface => |_| return false,
         else => return true,
     }
 }
 
 pub fn setFocus(self: *Client, focus: bool) void {
     switch (self.client) {
-        .Popup => |_| {
-            unreachable;
-        },
         .Toplevel => |*t| {
             t.setFocus(focus);
+        },
+        else => {
+            unreachable;
         },
     }
 }
 
 pub fn toggleMaximize(self: *Client) void {
     switch (self.client) {
-        .Popup => |_| {
-            unreachable;
-        },
         .Toplevel => |*t| {
             t.toggleMaximize();
+        },
+        else => {
+            unreachable;
         },
     }
 }
 
 pub fn setPos(self: *Client, new_x: i32, new_y: i32) void {
-    switch (self.client) {
-        .Popup => |_| {
-            unreachable;
-        },
-        .Toplevel => |*t| {
-            t.setPos(new_x, new_y);
-        },
-    }
+    self.x = new_x;
+    self.y = new_y;
+    self.wlr_scene_tree.?.node.setPosition(new_x, new_y);
 }
 
 pub fn setSize(self: *Client, new_width: i32, new_height: i32) void {
     switch (self.client) {
-        .Popup => |_| {
-            unreachable;
-        },
         .Toplevel => |*t| {
             t.setSize(new_width, new_height);
+        },
+        else => {
+            unreachable;
         },
     }
 }
 
 pub fn setCurrentOutput(self: *Client, output: *owm.Output) void {
     switch (self.client) {
-        .Popup => |*p| {
-            _ = p;
-        },
         .Toplevel => |*t| {
             t.current_output = output;
+        },
+        else => {
+            unreachable;
         },
     }
 }
