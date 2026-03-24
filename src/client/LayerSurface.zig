@@ -68,16 +68,16 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
         var zone_type: owm.Output.ExclusiveZone.Type = undefined;
         if (anchors.top and anchors.right and !anchors.bottom and anchors.left) {
             zone_type = .Top;
-            layer_surface_client.wlr_scene_tree.?.node.setPosition(work_area.x, work_area.y);
+            layer_surface_client.setPos(work_area.x, work_area.y);
         } else if (!anchors.top and anchors.right and anchors.bottom and anchors.left) {
             zone_type = .Bottom;
-            layer_surface_client.wlr_scene_tree.?.node.setPosition(work_area.x, work_area.y + work_area.height - exclusive_zone_size_c_int);
+            layer_surface_client.setPos(work_area.x, work_area.y + work_area.height - exclusive_zone_size_c_int);
         } else if (anchors.top and anchors.right and anchors.bottom and !anchors.left) {
             zone_type = .Right;
-            layer_surface_client.wlr_scene_tree.?.node.setPosition(work_area.x + work_area.width - exclusive_zone_size_c_int, work_area.y);
+            layer_surface_client.setPos(work_area.x + work_area.width - exclusive_zone_size_c_int, work_area.y);
         } else if (anchors.top and !anchors.right and anchors.bottom and anchors.left) {
             zone_type = .Left;
-            layer_surface_client.wlr_scene_tree.?.node.setPosition(work_area.x, work_area.y);
+            layer_surface_client.setPos(work_area.x, work_area.y);
         } else {
             owm.log.errf("Got unsupported anchors=({}, {}, {}, {})", .{
                 anchors.top,

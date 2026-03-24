@@ -20,7 +20,7 @@ pub const ClientType = union(enum) {
     Toplevel: owm.client.Toplevel,
 };
 
-wlr_scene_tree: ?*wlr.SceneTree,
+wlr_scene_tree: *wlr.SceneTree,
 x: i32 = 0,
 y: i32 = 0,
 link: wl.list.Link = undefined,
@@ -30,7 +30,7 @@ pub fn newPopup(wlr_xdg_popup: *wlr.XdgPopup, parent: *Client) Error!*Client {
     var client = try owm.c_alloc.create(Client);
     errdefer owm.c_alloc.destroy(client);
 
-    const parent_scene_tree = parent.wlr_scene_tree orelse return Error.ParentSceneTreeNotFound;
+    const parent_scene_tree = parent.wlr_scene_tree;
 
     const xdg_surface = wlr_xdg_popup.base;
     const scene_tree = parent_scene_tree.createSceneXdgSurface(xdg_surface) catch {
@@ -107,7 +107,7 @@ fn setup(self: *Client) void {
             const work_area = t.current_output.area;
             const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(owm.client.Toplevel.SPAWN_SIZE_X, 2);
             const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(owm.client.Toplevel.SPAWN_SIZE_Y, 2);
-            self.wlr_scene_tree.?.node.setPosition(spawn_x, spawn_y);
+            self.wlr_scene_tree.node.setPosition(spawn_x, spawn_y);
             self.x = spawn_x;
             self.y = spawn_y;
         },
@@ -221,7 +221,7 @@ pub fn toggleMaximize(self: *Client) void {
 pub fn setPos(self: *Client, new_x: i32, new_y: i32) void {
     self.x = new_x;
     self.y = new_y;
-    self.wlr_scene_tree.?.node.setPosition(new_x, new_y);
+    self.wlr_scene_tree.node.setPosition(new_x, new_y);
 }
 
 pub fn setSize(self: *Client, new_width: i32, new_height: i32) void {

@@ -57,7 +57,7 @@ pub fn checkSurfaceMatch(self: *Self, surface: *wlr.Surface) bool {
 pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
-        client.Client.from(self).wlr_scene_tree.?.node.raiseToTop();
+        client.Client.from(self).wlr_scene_tree.node.raiseToTop();
     }
 }
 
@@ -88,7 +88,7 @@ pub fn toggleMaximize(self: *Self) void {
         toplevel_client.x = output_work_area.x;
         toplevel_client.y = output_work_area.y;
 
-        toplevel_client.wlr_scene_tree.?.node.setPosition(output_work_area.x, output_work_area.y);
+        toplevel_client.setPos(output_work_area.x, output_work_area.y);
         _ = self.wlr_xdg_toplevel.setSize(output_work_area.width, output_work_area.height);
         _ = self.wlr_xdg_toplevel.setMaximized(true);
     }
