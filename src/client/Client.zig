@@ -219,6 +219,7 @@ pub fn getUnconstrainBox(self: *Client) wlr.Box {
 pub fn isFocusable(self: *Client) bool {
     switch (self.client) {
         .Toplevel => |_| return true,
+        .XWayland => |_| return true,
         else => return false,
     }
 }
@@ -227,6 +228,9 @@ pub fn setFocus(self: *Client, focus: bool) void {
     switch (self.client) {
         .Toplevel => |*t| {
             t.setFocus(focus);
+        },
+        .XWayland => |*xw| {
+            xw.setFocus(focus);
         },
         else => {
             unreachable;
@@ -238,6 +242,9 @@ pub fn toggleMaximize(self: *Client) void {
     switch (self.client) {
         .Toplevel => |*t| {
             t.toggleMaximize();
+        },
+        .XWayland => |*xw| {
+            xw.toggleMaximize();
         },
         else => {
             unreachable;
@@ -256,6 +263,12 @@ pub fn setSize(self: *Client, new_width: i32, new_height: i32) void {
         .Toplevel => |*t| {
             t.setSize(new_width, new_height);
         },
+        .XWayland => |*xw| {
+            xw.setSize(
+                @as(u16, @intCast(new_width)),
+                @as(u16, @intCast(new_height)),
+            );
+        },
         else => {
             unreachable;
         },
@@ -266,6 +279,9 @@ pub fn setCurrentOutput(self: *Client, output: *owm.Output) void {
     switch (self.client) {
         .Toplevel => |*t| {
             t.current_output = output;
+        },
+        .XWayland => |*xw| {
+            xw.current_output = output;
         },
         else => {
             unreachable;

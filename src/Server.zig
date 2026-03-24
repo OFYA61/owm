@@ -304,6 +304,7 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 }
 
 fn processCursorMotion(self: *Server, time: u32) void {
+    owm.log.infof("Cursor mode {}", .{self.cursor_mode});
     if (self.cursor_mode == .move) {
         const grabbed_client = self.grabbed_client.?;
         grabbed_client.setPos(
