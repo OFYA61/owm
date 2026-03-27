@@ -1,7 +1,14 @@
-pub const Client = @import("./Client.zig");
+pub const window = @import("window/window.zig");
+
 pub const LayerSurface = @import("./LayerSurface.zig");
 pub const Popup = @import("./Popup.zig");
-pub const Toplevel = @import("./Toplevel.zig");
-pub const XWayland = @import("./XWayland.zig");
+pub const XwalandOverride = @import("./XwaylandOverride.zig");
 
-pub const Error = Client.Error;
+pub const Error = error{
+    CursorNotOnOutput,
+    FailedToCreateSceneTree,
+    FailedToDetermineOutout,
+    OutOfMemory,
+    ParentSceneTreeNotFound,
+    SceneTreeNotFound,
+};

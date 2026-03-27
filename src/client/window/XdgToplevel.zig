@@ -7,6 +7,8 @@ const wlr = @import("wlroots");
 
 const owm = @import("root").owm;
 const client = owm.client;
+const log = owm.log;
+const window = owm.client.window;
 
 pub const SPAWN_SIZE_X = 640;
 pub const SPAWN_SIZE_Y = 360;
@@ -27,6 +29,7 @@ request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback
 
 pub fn create(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
     const output = owm.server.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
+
     return .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,
         .current_output = output,
@@ -44,6 +47,13 @@ pub fn setup(self: *Self) void {
     self.wlr_xdg_toplevel.events.request_resize.add(&self.request_resize_listener);
     self.wlr_xdg_toplevel.events.request_maximize.add(&self.request_maximize_listener);
     self.wlr_xdg_toplevel.events.request_fullscreen.add(&self.request_fullscreen_listener);
+
+    var xdg_toplevel_window = window.Window.from(self);
+
+    const work_area = self.current_output.area;
+    const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(SPAWN_SIZE_X, 2);
+    const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(SPAWN_SIZE_Y, 2);
+    xdg_toplevel_window.setPos(spawn_x, spawn_y);
 }
 
 pub fn getWlrSurface(self: *Self) *wlr.Surface {
@@ -57,7 +67,7 @@ pub fn checkSurfaceMatch(self: *Self, surface: *wlr.Surface) bool {
 pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
-        client.Client.from(self).wlr_scene_tree.node.raiseToTop();
+        window.Window.from(self).wlr_scene_tree.node.raiseToTop();
     }
 }
 
@@ -70,25 +80,25 @@ pub fn getGeom(self: *Self) wlr.Box {
 }
 
 pub fn toggleMaximize(self: *Self) void {
-    var toplevel_client = client.Client.from(self);
+    var xdg_toplevel_window = window.Window.from(self);
     if (self.wlr_xdg_toplevel.current.maximized) {
         const box = self.box_before_maximize;
         self.setSize(box.width, box.height);
-        toplevel_client.setPos(box.x, box.y);
+        xdg_toplevel_window.setPos(box.x, box.y);
         _ = self.wlr_xdg_toplevel.setMaximized(false);
     } else {
         const output_work_area = self.current_output.work_area;
         self.box_before_maximize = .{
-            .x = toplevel_client.x,
-            .y = toplevel_client.y,
+            .x = xdg_toplevel_window.x,
+            .y = xdg_toplevel_window.y,
             .width = self.wlr_xdg_toplevel.current.width,
             .height = self.wlr_xdg_toplevel.current.height,
         };
 
-        toplevel_client.x = output_work_area.x;
-        toplevel_client.y = output_work_area.y;
+        xdg_toplevel_window.x = output_work_area.x;
+        xdg_toplevel_window.y = output_work_area.y;
 
-        toplevel_client.setPos(output_work_area.x, output_work_area.y);
+        xdg_toplevel_window.setPos(output_work_area.x, output_work_area.y);
         _ = self.wlr_xdg_toplevel.setSize(output_work_area.width, output_work_area.height);
         _ = self.wlr_xdg_toplevel.setMaximized(true);
     }
@@ -98,8 +108,9 @@ pub fn toggleMaximize(self: *Self) void {
 
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const toplevel: *Self = @fieldParentPtr("new_popup_listener", listener);
-    _ = client.Client.newPopup(wlr_xdg_popup, client.Client.from(toplevel)) catch |err| {
-        owm.log.errf("Failed to create XDG Popup for toplevel {}", .{err});
+    const xdg_toplevel_window = window.Window.from(toplevel);
+    _ = client.Popup.create(wlr_xdg_popup, xdg_toplevel_window.wlr_scene_tree, xdg_toplevel_window.wlr_scene_tree, toplevel.current_output) catch |err| {
+        log.errf("Failed to create XDG Popup for toplevel {}", .{err});
         return;
     };
 }
@@ -107,19 +118,19 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 /// Called when the surface is mapped, or ready to display on screen
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
-    const toplevel_client = client.Client.from(toplevel);
-    owm.server.app_clients.prepend(toplevel_client);
-    owm.server.focusClient(toplevel_client);
+    const xdg_toplevel_window = window.Window.from(toplevel);
+    owm.server.windows.prepend(xdg_toplevel_window);
+    owm.server.focusWindow(xdg_toplevel_window);
 }
 
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("unmap_listener", listener);
-    const toplevel_client = client.Client.from(toplevel);
-    if (owm.server.grabbed_client == toplevel_client) {
+    const xdg_toplevel_window = window.Window.from(toplevel);
+    if (owm.server.grabbed_window == xdg_toplevel_window) {
         owm.server.resetCursorMode();
     }
-    toplevel_client.link.remove();
+    xdg_toplevel_window.link.remove();
 }
 
 /// Called when the surface state is committed
@@ -127,8 +138,8 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
     const toplevel: *Self = @fieldParentPtr("commit_listener", listener);
     if (toplevel.wlr_xdg_toplevel.base.initial_commit) {
         // When an xdg_surface performs an initial commit, the compositor must
-        // reply with a configure so the client can map the surface.
-        // Configuring the xdg_toplevel with 0,0 size to lets the client pick the
+        // reply with a configure so the window can map the surface.
+        // Configuring the xdg_toplevel with 0,0 size to lets the window pick the
         // dimensions itself.
         _ = toplevel.wlr_xdg_toplevel.setSize(SPAWN_SIZE_X, SPAWN_SIZE_Y);
     }
@@ -150,49 +161,49 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel.request_maximize_listener.link.remove();
     toplevel.request_fullscreen_listener.link.remove();
 
-    if (owm.server.focused_client == client.Client.from(toplevel)) {
-        owm.server.focused_client = null;
+    if (owm.server.focused_window == window.Window.from(toplevel)) {
+        owm.server.focused_window = null;
     }
 
-    owm.c_alloc.destroy(client.Client.from(toplevel));
+    owm.c_alloc.destroy(window.Window.from(toplevel));
 }
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
     const toplevel: *Self = @fieldParentPtr("request_move_listener", listener);
-    const toplevel_client = client.Client.from(toplevel);
+    const xdg_toplevel_window = window.Window.from(toplevel);
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
         const new_x = @as(c_int, @intFromFloat(owm.server.wlr_cursor.x)) - @divFloor(box.width, 2);
         const new_y = @as(c_int, @intFromFloat(owm.server.wlr_cursor.y)) - 3;
-        toplevel_client.setPos(new_x, new_y);
+        xdg_toplevel_window.setPos(new_x, new_y);
     }
 
-    owm.server.grabbed_client = toplevel_client;
+    owm.server.grabbed_window = xdg_toplevel_window;
     owm.server.cursor_mode = .move;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel_client.x));
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel_client.y));
+    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(xdg_toplevel_window.x));
+    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(xdg_toplevel_window.y));
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Self = @fieldParentPtr("request_resize_listener", listener);
-    const toplevel_client = client.Client.from(toplevel);
+    const xdg_toplevel_window = window.Window.from(toplevel);
 
-    owm.server.grabbed_client = toplevel_client;
+    owm.server.grabbed_window = xdg_toplevel_window;
     owm.server.cursor_mode = .resize;
     owm.server.resize_edges = event.edges;
 
     const box = toplevel.wlr_xdg_toplevel.base.geometry;
 
-    const border_x = toplevel_client.x + box.x + if (event.edges.right) box.width else 0;
-    const border_y = toplevel_client.y + box.y + if (event.edges.bottom) box.height else 0;
+    const border_x = xdg_toplevel_window.x + box.x + if (event.edges.right) box.width else 0;
+    const border_y = xdg_toplevel_window.y + box.y + if (event.edges.bottom) box.height else 0;
     owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
     owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
 
     owm.server.grab_box = box;
-    owm.server.grab_box.x += toplevel_client.x;
-    owm.server.grab_box.y += toplevel_client.y;
+    owm.server.grab_box.x += xdg_toplevel_window.x;
+    owm.server.grab_box.y += xdg_toplevel_window.y;
 }
 
 fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
