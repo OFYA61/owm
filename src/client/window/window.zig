@@ -1,5 +1,5 @@
-pub const XdgToplevel = @import("XdgToplevel.zig");
-pub const Xwayland = @import("Xwayland.zig");
+const XdgToplevel = @import("XdgToplevel.zig");
+const Xwayland = @import("Xwayland.zig");
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
@@ -16,27 +16,16 @@ pub const Window = struct {
         xwayland: Xwayland,
     };
 
-    wlr_scene_tree: *wlr.SceneTree,
-    x: i32 = 0,
-    y: i32 = 0,
     link: wl.list.Link = undefined,
     window: WindowType,
 
-    pub fn newToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!*Self {
+    pub fn newXdgToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!*Self {
         var window = try owm.c_alloc.create(Self);
         errdefer owm.c_alloc.destroy(window);
 
-        const scene_tree = owm.server.scene_tree_apps.createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
-            log.err("Failed to create scene tree for Toplevel");
-            return client.Error.FailedToCreateSceneTree;
-        };
-        errdefer scene_tree.node.link.remove();
-        scene_tree.node.data = window;
-
         window.* = .{
-            .wlr_scene_tree = scene_tree,
             .window = .{
-                .xdg_toplevel = try XdgToplevel.create(wlr_xdg_toplevel),
+                .xdg_toplevel = try XdgToplevel.create(window, wlr_xdg_toplevel),
             },
         };
         window.setup();
@@ -47,15 +36,7 @@ pub const Window = struct {
         var window = try owm.c_alloc.create(Self);
         errdefer owm.c_alloc.destroy(window);
 
-        const scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(wlr_xwayland_surface.surface.?) catch {
-            log.err("Failed to create scene tree for Toplevel");
-            return client.Error.FailedToCreateSceneTree;
-        };
-        errdefer scene_tree.node.link.remove();
-        scene_tree.node.data = window;
-
         window.* = .{
-            .wlr_scene_tree = scene_tree,
             .window = .{
                 .xwayland = try Xwayland.create(wlr_xwayland_surface),
             },
@@ -108,12 +89,7 @@ pub const Window = struct {
                 return t.getGeom();
             },
             .xwayland => |*xw| {
-                return .{
-                    .x = self.x,
-                    .y = self.y,
-                    .width = @as(i32, @intCast(xw.wlr_xwayland_surface.width)),
-                    .height = @as(i32, @intCast(xw.wlr_xwayland_surface.height)),
-                };
+                return xw.getGeom();
             },
         }
     }
@@ -141,9 +117,14 @@ pub const Window = struct {
     }
 
     pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
-        self.x = new_x;
-        self.y = new_y;
-        self.wlr_scene_tree.node.setPosition(new_x, new_y);
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                t.setPos(new_x, new_y);
+            },
+            .xwayland => |*xw| {
+                xw.setPos(new_x, new_y);
+            },
+        }
     }
 
     pub fn setSize(self: *Self, new_width: i32, new_height: i32) void {

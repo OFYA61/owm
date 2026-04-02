@@ -474,7 +474,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
     _ = listener;
     if (wlr_xwayland_surface.override_redirect) {
-        _ = owm.client.XwalandOverride.create(wlr_xwayland_surface) catch |err| {
+        _ = owm.client.XwaylandOverride.create(wlr_xwayland_surface) catch |err| {
             owm.log.errf("Failed to allocate XwaylandOverride {}", .{err});
             return;
         };
@@ -488,7 +488,7 @@ fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_
 
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-    _ = owm.client.window.Window.newToplevel(wlr_xdg_toplevel) catch |err| {
+    _ = owm.client.window.Window.newXdgToplevel(wlr_xdg_toplevel) catch |err| {
         owm.log.errf("Failed to allocate new toplevel {}", .{err});
         wlr_xdg_toplevel.sendClose();
         return;
