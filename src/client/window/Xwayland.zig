@@ -12,7 +12,6 @@ const window = owm.client.window;
 
 wlr_xwayland_surface: *wlr.XwaylandSurface,
 current_output: *owm.Output,
-maximized: bool = false,
 wlr_scene_tree: ?*wlr.SceneTree = null,
 x: i32 = 0,
 y: i32 = 0,
@@ -52,12 +51,6 @@ pub fn setFocus(self: *Self, focus: bool) void {
 pub fn toggleMaximize(self: *Self) void {
     // TODO: finish maximze code
     _ = self;
-    // var xwayland_window = window.window.from(self);
-    // if (self.maximized) {
-    //     self.wlr_xwayland_surface.setMaximized(true, true);
-    // } else {
-    //     self.wlr_xwayland_surface.setMaximized(false, false);
-    // }
 }
 
 pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
@@ -92,12 +85,19 @@ fn requestConfigureCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Co
         xwayland.wlr_xwayland_surface.configure(configure.x, configure.y, configure.width, configure.height);
         return;
     }
+
+    xwayland.wlr_xwayland_surface.configure(
+        @as(i16, @intCast(xwayland.x)),
+        @as(i16, @intCast(xwayland.y)),
+        configure.width,
+        configure.height,
+    );
 }
 
 fn associateCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("associate_listener", listener);
     if (xwayland.wlr_xwayland_surface.surface == null) {
-        owm.log.err("Self: Got associate callback without a valid surface");
+        log.err("Self: Got associate callback without a valid surface");
         return;
     }
 
@@ -119,18 +119,10 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
 
-    if (xwayland.wlr_xwayland_surface.override_redirect) {
-        xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
-            owm.log.err("XWayland: Failed to create subsurface for menu");
-            return;
-        };
-        xwayland.wlr_scene_tree.?.node.raiseToTop();
-    } else {
-        xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
-            owm.log.err("XWayland: Failed to create subsurface for app");
-            return;
-        };
-    }
+    xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
+        log.err("XWayland: Failed to create subsurface");
+        return;
+    };
     xwayland.wlr_xwayland_surface.activate(true);
     xwayland.setPos(xwayland.wlr_scene_tree.?.node.x, xwayland.wlr_scene_tree.?.node.y);
 
@@ -164,11 +156,9 @@ fn requestMoveCallback(listener: *wl.Listener(void)) void {
         return;
     }
 
-    if (xwayland.maximized) {
-        // TODO: handle moving while maximized
-        // 1. Unmaximize
-        // 2. Set to previous position
-    }
+    // TODO: handle moving while maximized
+    // 1. Unmaximize
+    // 2. Set to previous position
 
     owm.server.grabbed_window = xwayland_window;
     owm.server.cursor_mode = .move;

@@ -7,6 +7,7 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
 const owm = @import("owm.zig");
+const log = owm.log;
 
 const MIN_CLIENT_WIDTH = 240;
 const MIN_CLIENT_HEIGHT = 135;
@@ -158,7 +159,7 @@ pub fn deinit(self: *Server) void {
 
 pub fn run(self: *Server) anyerror!void {
     try self.wlr_backend.start();
-    owm.log.infof(
+    log.infof(
         "Running OWM compositor on WAYLAND_DISPLAY='{s}' and Xwayland DISLPAY='{s}'",
         .{
             self.wl_socket,
@@ -175,17 +176,17 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
         },
         xkb.Keysym.t => {
             self.spawnChild("ghostty") catch {
-                owm.log.err("Failed to spawn cosmic-term");
+                log.err("Failed to spawn cosmic-term");
             };
         },
         xkb.Keysym.f => {
             self.spawnChild("cosmic-files") catch {
-                owm.log.err("Failed to spawn cosmic-files");
+                log.err("Failed to spawn cosmic-files");
             };
         },
         xkb.Keysym.b => {
             self.spawnChild("brave") catch {
-                owm.log.err("Failed to spawm brave");
+                log.err("Failed to spawm brave");
             };
         },
         xkb.Keysym.m => {
@@ -390,7 +391,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     const server: *Server = @fieldParentPtr("new_output_listener", listener);
 
     const new_output = owm.Output.create(wlr_output) catch |err| {
-        owm.log.errf("Failed to allocate new output {}", .{err});
+        log.errf("Failed to allocate new output {}", .{err});
         wlr_output.destroy();
         return;
     };
@@ -406,7 +407,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     }
 
     if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
-        owm.log.info("Output arrangement found, setting up displays according to it");
+        log.info("Output arrangement found, setting up displays according to it");
 
         for (arrangement.displays.items) |*display| {
             var output_to_modify: ?*owm.Output = null;
@@ -417,14 +418,14 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
             }
 
             if (!display.active) {
-                owm.log.infof("Disabling output {s}", .{display.id});
+                log.infof("Disabling output {s}", .{display.id});
                 output_to_modify.?.disableOutput() catch |err| {
-                    owm.log.errf("Failed to disable output {}", .{err});
+                    log.errf("Failed to disable output {}", .{err});
                 };
                 continue;
             }
 
-            owm.log.infof(
+            log.infof(
                 "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
                 .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
             );
@@ -438,13 +439,13 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
                     .refresh = display.refresh,
                 },
             ) catch |err| {
-                owm.log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
+                log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
                 continue;
             };
         }
     } else {
         var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
-            owm.log.err("Failed to initialize memory for new arrangement");
+            log.err("Failed to initialize memory for new arrangement");
             return;
         };
 
@@ -458,7 +459,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
                 .y = output.area.y,
                 .active = output.wlr_output.enabled,
             }) catch {
-                owm.log.err("Failed to append display definition");
+                log.err("Failed to append display definition");
                 displays.deinit(owm.alloc);
                 return;
             };
@@ -475,12 +476,12 @@ fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_
     _ = listener;
     if (wlr_xwayland_surface.override_redirect) {
         _ = owm.client.XwaylandOverride.create(wlr_xwayland_surface) catch |err| {
-            owm.log.errf("Failed to allocate XwaylandOverride {}", .{err});
+            log.errf("Failed to allocate XwaylandOverride {}", .{err});
             return;
         };
     } else {
         _ = owm.client.window.Window.newXwayland(wlr_xwayland_surface) catch |err| {
-            owm.log.errf("Failed to allocate Xwayland {}", .{err});
+            log.errf("Failed to allocate Xwayland {}", .{err});
             return;
         };
     }
@@ -489,7 +490,7 @@ fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
     _ = owm.client.window.Window.newXdgToplevel(wlr_xdg_toplevel) catch |err| {
-        owm.log.errf("Failed to allocate new toplevel {}", .{err});
+        log.errf("Failed to allocate new toplevel {}", .{err});
         wlr_xdg_toplevel.sendClose();
         return;
     };
@@ -509,7 +510,7 @@ fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr
         },
         .keyboard => {
             _ = owm.Keyboard.create(input_device) catch |err| {
-                owm.log.errf("Failed to allocate keyboard: {}", .{err});
+                log.errf("Failed to allocate keyboard: {}", .{err});
                 return;
             };
         },
@@ -593,7 +594,7 @@ fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surfa
     }
 
     _ = owm.client.LayerSurface.create(wlr_layer_surface) catch {
-        owm.log.err("Failed to allocate new LayerSurface");
+        log.err("Failed to allocate new LayerSurface");
         return;
     };
 }
