@@ -19,8 +19,8 @@
             .hash = "wlroots-0.19.3-jmOlcuL_AwBHhLCwpFsXbTizE3q9BugFmGX-XIxqcPMc",
         },
         .logly = .{
-            .url = "https://github.com/muhammad-fiaz/logly.zig/archive/refs/tags/0.1.6.tar.gz",
-            .hash = "logly-0.1.6-kZjLexxIEgCMOhBA3f1bx3lzP-JrTZDAfcYc7vVrtbzV",
+            .url = "https://github.com/muhammad-fiaz/logly.zig/archive/refs/tags/0.1.7.tar.gz",
+            .hash = "logly-0.1.7-kZjLe39xFADjPTzf1uQZJOoBV-25UFvQMI_TnBTwOJBk",
         },
     },
     .paths = .{""},

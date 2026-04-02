@@ -7,6 +7,7 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
 const owm = @import("owm.zig");
+const log = owm.log;
 
 const MIN_CLIENT_WIDTH = 240;
 const MIN_CLIENT_HEIGHT = 135;
@@ -33,18 +34,18 @@ wlr_xwayland: *wlr.Xwayland,
 xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylandNewSurfaceCallback),
 
 wlr_xdg_shell: *wlr.XdgShell,
-app_clients: wl.list.Head(owm.client.Client, .link) = undefined,
+windows: wl.list.Head(owm.client.window.Window, .link) = undefined,
 new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 
 wlr_seat: *wlr.Seat,
-focused_client: ?*owm.client.Client = null,
+focused_window: ?*owm.client.window.Window = null,
 new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
 request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
 request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
 
 wlr_cursor: *wlr.Cursor,
 wlr_cursor_manager: *wlr.XcursorManager,
-grabbed_client: ?*owm.client.Client = null,
+grabbed_window: ?*owm.client.window.Window = null,
 cursor_mode: enum { passthrough, move, resize } = .passthrough,
 grab_x: f64 = 0,
 grab_y: f64 = 0,
@@ -108,7 +109,7 @@ pub fn init(self: *Server) anyerror!void {
 
     try self.wlr_renderer.initServer(wl_server);
 
-    self.app_clients.init();
+    self.windows.init();
 
     self.outputs.init();
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
@@ -158,7 +159,7 @@ pub fn deinit(self: *Server) void {
 
 pub fn run(self: *Server) anyerror!void {
     try self.wlr_backend.start();
-    owm.log.infof(
+    log.infof(
         "Running OWM compositor on WAYLAND_DISPLAY='{s}' and Xwayland DISLPAY='{s}'",
         .{
             self.wl_socket,
@@ -175,32 +176,32 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
         },
         xkb.Keysym.t => {
             self.spawnChild("ghostty") catch {
-                owm.log.err("Failed to spawn cosmic-term");
+                log.err("Failed to spawn cosmic-term");
             };
         },
         xkb.Keysym.f => {
             self.spawnChild("cosmic-files") catch {
-                owm.log.err("Failed to spawn cosmic-files");
+                log.err("Failed to spawn cosmic-files");
             };
         },
         xkb.Keysym.b => {
             self.spawnChild("brave") catch {
-                owm.log.err("Failed to spawm brave");
+                log.err("Failed to spawm brave");
             };
         },
         xkb.Keysym.m => {
-            if (self.focused_client) |toplevel| {
-                toplevel.toggleMaximize();
+            if (self.focused_window) |window| {
+                window.toggleMaximize();
             }
         },
         xkb.Keysym.F1 => {
-            if (self.focused_client) |_| {
-                const first_client = self.app_clients.first().?;
-                first_client.link.remove();
-                self.app_clients.append(first_client);
-                self.focusClient(self.app_clients.first().?);
-            } else if (self.app_clients.first()) |first_client| {
-                self.focusClient(first_client);
+            if (self.focused_window) |_| {
+                const first_window = self.windows.first().?;
+                first_window.link.remove();
+                self.windows.append(first_window);
+                self.focusWindow(self.windows.first().?);
+            } else if (self.windows.first()) |first_client| {
+                self.focusWindow(first_client);
             }
         },
         else => return false,
@@ -208,29 +209,26 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
     return true;
 }
 
-pub fn focusClient(self: *Server, new_client: *owm.client.Client) void {
-    if (!new_client.isFocusable()) {
-        return;
-    }
-    if (self.focused_client) |prev_client| {
-        if (prev_client == new_client) {
+pub fn focusWindow(self: *Server, new_window: *owm.client.window.Window) void {
+    if (self.focused_window) |prev_window| {
+        if (prev_window == new_window) {
             return;
         }
-        prev_client.setFocus(false);
+        prev_window.setFocus(false);
     }
 
-    new_client.setFocus(true);
+    new_window.setFocus(true);
 
     const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
     self.wlr_seat.keyboardNotifyEnter(
-        new_client.getWlrSurface(),
+        new_window.getWlrSurface(),
         wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
         &wlr_keyboard.modifiers,
     );
 
-    new_client.link.remove();
-    self.app_clients.prepend(new_client);
-    self.focused_client = new_client;
+    new_window.link.remove();
+    self.windows.prepend(new_window);
+    self.focused_window = new_window;
 }
 
 fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
@@ -269,17 +267,17 @@ pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
 
 pub fn resetCursorMode(self: *Server) void {
     self.cursor_mode = .passthrough;
-    self.grabbed_client = null;
+    self.grabbed_window = null;
 }
 
-const ViewAtResponse = struct {
+const WindowAtResponse = struct {
     sx: f64,
     sy: f64,
     wlr_surface: *wlr.Surface,
-    client: *owm.client.Client,
+    window: *owm.client.window.Window,
 };
 
-fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
+fn windowAt(self: *Server, lx: f64, ly: f64) ?WindowAtResponse {
     var sx: f64 = undefined;
     var sy: f64 = undefined;
     if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
@@ -289,12 +287,12 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
 
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
-            if (owm.client.Client.fromOpaquePtr(n.node.data)) |client| {
-                return ViewAtResponse{
+            if (owm.client.window.Window.fromOpaquePtr(n.node.data)) |window| {
+                return WindowAtResponse{
                     .sx = sx,
                     .sy = sy,
                     .wlr_surface = scene_surface.surface,
-                    .client = client,
+                    .window = window,
                 };
             }
         }
@@ -303,17 +301,39 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
     return null;
 }
 
+const ViewAtResponse = struct {
+    sx: f64,
+    sy: f64,
+    wlr_surface: *wlr.Surface,
+};
+
+fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
+    var sx: f64 = undefined;
+    var sy: f64 = undefined;
+    if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
+        if (node.type != .buffer) return null;
+        const scene_buffer = wlr.SceneBuffer.fromNode(node);
+        const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return null;
+        return ViewAtResponse{
+            .sx = sx,
+            .sy = sy,
+            .wlr_surface = scene_surface.surface,
+        };
+    }
+
+    return null;
+}
+
 fn processCursorMotion(self: *Server, time: u32) void {
-    owm.log.infof("Cursor mode {}", .{self.cursor_mode});
     if (self.cursor_mode == .move) {
-        const grabbed_client = self.grabbed_client.?;
-        grabbed_client.setPos(
+        const grabbed_window = self.grabbed_window.?;
+        grabbed_window.setPos(
             @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
             @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
         );
         return;
     } else if (self.cursor_mode == .resize) {
-        const grabbed_client = self.grabbed_client.?;
+        const grabbed_window = self.grabbed_window.?;
         const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
         const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
 
@@ -346,14 +366,14 @@ fn processCursorMotion(self: *Server, time: u32) void {
             }
         }
 
-        const box = grabbed_client.getGeom();
+        const box = grabbed_window.getGeom();
         const new_x = new_left - box.x;
         const new_y = new_top - box.y;
-        grabbed_client.setPos(new_x, new_y);
+        grabbed_window.setPos(new_x, new_y);
 
         const new_width: i32 = new_right - new_left;
         const new_height: i32 = new_bottom - new_top;
-        grabbed_client.setSize(new_width, new_height);
+        grabbed_window.setSize(new_width, new_height);
         return;
     }
 
@@ -371,7 +391,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     const server: *Server = @fieldParentPtr("new_output_listener", listener);
 
     const new_output = owm.Output.create(wlr_output) catch |err| {
-        owm.log.errf("Failed to allocate new output {}", .{err});
+        log.errf("Failed to allocate new output {}", .{err});
         wlr_output.destroy();
         return;
     };
@@ -387,7 +407,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     }
 
     if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
-        owm.log.info("Output arrangement found, setting up displays according to it");
+        log.info("Output arrangement found, setting up displays according to it");
 
         for (arrangement.displays.items) |*display| {
             var output_to_modify: ?*owm.Output = null;
@@ -398,14 +418,14 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
             }
 
             if (!display.active) {
-                owm.log.infof("Disabling output {s}", .{display.id});
+                log.infof("Disabling output {s}", .{display.id});
                 output_to_modify.?.disableOutput() catch |err| {
-                    owm.log.errf("Failed to disable output {}", .{err});
+                    log.errf("Failed to disable output {}", .{err});
                 };
                 continue;
             }
 
-            owm.log.infof(
+            log.infof(
                 "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
                 .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
             );
@@ -419,13 +439,13 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
                     .refresh = display.refresh,
                 },
             ) catch |err| {
-                owm.log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
+                log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
                 continue;
             };
         }
     } else {
         var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
-            owm.log.err("Failed to initialize memory for new arrangement");
+            log.err("Failed to initialize memory for new arrangement");
             return;
         };
 
@@ -439,7 +459,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
                 .y = output.area.y,
                 .active = output.wlr_output.enabled,
             }) catch {
-                owm.log.err("Failed to append display definition");
+                log.err("Failed to append display definition");
                 displays.deinit(owm.alloc);
                 return;
             };
@@ -454,16 +474,23 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 
 fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
     _ = listener;
-    _ = owm.client.Client.newXWayland(wlr_xwayland_surface) catch |err| {
-        owm.log.errf("Failed to allocate XWayland {}", .{err});
-        return;
-    };
+    if (wlr_xwayland_surface.override_redirect) {
+        _ = owm.client.XwaylandOverride.create(wlr_xwayland_surface) catch |err| {
+            log.errf("Failed to allocate XwaylandOverride {}", .{err});
+            return;
+        };
+    } else {
+        _ = owm.client.window.Window.newXwayland(wlr_xwayland_surface) catch |err| {
+            log.errf("Failed to allocate Xwayland {}", .{err});
+            return;
+        };
+    }
 }
 
 /// Called when a client creates a new toplevel (app window)
 fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *wlr.XdgToplevel) void {
-    _ = owm.client.Client.newToplevel(wlr_xdg_toplevel) catch |err| {
-        owm.log.errf("Failed to allocate new toplevel {}", .{err});
+    _ = owm.client.window.Window.newXdgToplevel(wlr_xdg_toplevel) catch |err| {
+        log.errf("Failed to allocate new toplevel {}", .{err});
         wlr_xdg_toplevel.sendClose();
         return;
     };
@@ -483,7 +510,7 @@ fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr
         },
         .keyboard => {
             _ = owm.Keyboard.create(input_device) catch |err| {
-                owm.log.errf("Failed to allocate keyboard: {}", .{err});
+                log.errf("Failed to allocate keyboard: {}", .{err});
                 return;
             };
         },
@@ -525,18 +552,18 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
     const server: *Server = @fieldParentPtr("cursor_button_listener", listener);
     _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
     if (event.state == .released) {
-        if (server.grabbed_client) |grabbed_client| {
+        if (server.grabbed_window) |grabbed_window| {
             if (server.outputAtCursor()) |output| {
-                grabbed_client.setCurrentOutput(output);
+                grabbed_window.setCurrentOutput(output);
             }
         }
         server.resetCursorMode();
     } else {
-        if (server.viewAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
-            server.focusClient(result.client);
-        } else if (server.focused_client) |toplevel| {
-            toplevel.setFocus(false);
-            server.focused_client = null;
+        if (server.windowAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
+            server.focusWindow(result.window);
+        } else if (server.focused_window) |window| {
+            window.setFocus(false);
+            server.focused_window = null;
             server.wlr_seat.keyboardNotifyClearFocus();
         }
     }
@@ -566,8 +593,8 @@ fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surfa
         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
     }
 
-    _ = owm.client.Client.newLayerSurface(wlr_layer_surface) catch {
-        owm.log.err("Failed to allocate new layer surface");
+    _ = owm.client.LayerSurface.create(wlr_layer_surface) catch {
+        log.err("Failed to allocate new LayerSurface");
         return;
     };
 }

@@ -7,10 +7,14 @@ const wlr = @import("wlroots");
 
 const owm = @import("root").owm;
 const client = owm.client;
+const log = owm.log;
+const window = owm.client.window;
 
 wlr_xwayland_surface: *wlr.XwaylandSurface,
 current_output: *owm.Output,
-maximized: bool = false,
+wlr_scene_tree: ?*wlr.SceneTree = null,
+x: i32 = 0,
+y: i32 = 0,
 
 request_configure_listener: wl.Listener(*wlr.XwaylandSurface.event.Configure) = .init(requestConfigureCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -22,8 +26,8 @@ associate_listener: wl.Listener(void) = .init(associateCallback),
 dissociate_listener: wl.Listener(void) = .init(dissociateCallback),
 destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
-pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) client.Error!Self {
-    const output = owm.server.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
+pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) owm.client.Error!Self {
+    const output = owm.server.outputAtCursor() orelse return owm.client.Error.CursorNotOnOutput;
 
     return .{
         .wlr_xwayland_surface = wlr_xwayland_surface,
@@ -47,22 +51,32 @@ pub fn setFocus(self: *Self, focus: bool) void {
 pub fn toggleMaximize(self: *Self) void {
     // TODO: finish maximze code
     _ = self;
-    // var xwayland_client = client.Client.from(self);
-    // if (self.maximized) {
-    //     self.wlr_xwayland_surface.setMaximized(true, true);
-    // } else {
-    //     self.wlr_xwayland_surface.setMaximized(false, false);
-    // }
+}
+
+pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
+    if (self.wlr_scene_tree) |scene_tree| {
+        self.x = new_x;
+        self.y = new_y;
+        scene_tree.node.setPosition(new_x, new_y);
+    }
 }
 
 pub fn setSize(self: *Self, new_width: u16, new_height: u16) void {
-    const xwayland_client = client.Client.from(self);
     self.wlr_xwayland_surface.configure(
-        @as(i16, @intCast(xwayland_client.x)),
-        @as(i16, @intCast(xwayland_client.y)),
+        @as(i16, @intCast(self.x)),
+        @as(i16, @intCast(self.y)),
         new_width,
         new_height,
     );
+}
+
+pub fn getGeom(self: *Self) wlr.Box {
+    return .{
+        .x = self.x,
+        .y = self.y,
+        .width = @as(i32, @intCast(self.wlr_xwayland_surface.width)),
+        .height = @as(i32, @intCast(self.wlr_xwayland_surface.height)),
+    };
 }
 
 fn requestConfigureCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Configure), configure: *wlr.XwaylandSurface.event.Configure) void {
@@ -71,12 +85,19 @@ fn requestConfigureCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Co
         xwayland.wlr_xwayland_surface.configure(configure.x, configure.y, configure.width, configure.height);
         return;
     }
+
+    xwayland.wlr_xwayland_surface.configure(
+        @as(i16, @intCast(xwayland.x)),
+        @as(i16, @intCast(xwayland.y)),
+        configure.width,
+        configure.height,
+    );
 }
 
 fn associateCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("associate_listener", listener);
     if (xwayland.wlr_xwayland_surface.surface == null) {
-        owm.log.err("Self: Got associate callback without a valid surface");
+        log.err("Self: Got associate callback without a valid surface");
         return;
     }
 
@@ -98,35 +119,27 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
 
-    const xwayland_client = client.Client.from(xwayland);
-
-    if (xwayland.wlr_xwayland_surface.override_redirect) {
-        xwayland_client.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
-            owm.log.err("XWayland: Failed to create subsurface for menu");
-            return;
-        };
-        xwayland_client.wlr_scene_tree.node.raiseToTop();
-    } else {
-        xwayland_client.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
-            owm.log.err("XWayland: Failed to create subsurface for app");
-            return;
-        };
-    }
+    xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
+        log.err("XWayland: Failed to create subsurface");
+        return;
+    };
     xwayland.wlr_xwayland_surface.activate(true);
-    xwayland_client.setPos(xwayland_client.wlr_scene_tree.node.x, xwayland_client.wlr_scene_tree.node.y);
-    xwayland_client.wlr_scene_tree.node.data = xwayland_client;
-    owm.server.app_clients.prepend(xwayland_client);
-    owm.server.focusClient(xwayland_client);
+    xwayland.setPos(xwayland.wlr_scene_tree.?.node.x, xwayland.wlr_scene_tree.?.node.y);
+
+    const xwayland_window = window.Window.from(xwayland);
+    xwayland.wlr_scene_tree.?.node.data = xwayland_window;
+    owm.server.windows.prepend(xwayland_window);
+    owm.server.focusWindow(xwayland_window);
 }
 
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("unmap_listener", listener);
 
-    const xwayland_client = client.Client.from(xwayland);
+    const xwayland_window = window.Window.from(xwayland);
 
     xwayland.commit_listener.link.remove();
-    xwayland_client.link.remove();
-    xwayland_client.wlr_scene_tree.node.destroy();
+    xwayland_window.link.remove();
+    xwayland.wlr_scene_tree.?.node.destroy();
 }
 
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surface) void {
@@ -137,27 +150,25 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
 
 fn requestMoveCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("request_move_listener", listener);
-    const xwayland_client = client.Client.from(xwayland);
+    const xwayland_window = window.Window.from(xwayland);
 
     if (xwayland.wlr_xwayland_surface.surface == null or !xwayland.wlr_xwayland_surface.surface.?.mapped) {
         return;
     }
 
-    if (xwayland.maximized) {
-        // TODO: handle moving while maximized
-        // 1. Unmaximize
-        // 2. Set to previous position
-    }
+    // TODO: handle moving while maximized
+    // 1. Unmaximize
+    // 2. Set to previous position
 
-    owm.server.grabbed_client = xwayland_client;
+    owm.server.grabbed_window = xwayland_window;
     owm.server.cursor_mode = .move;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(xwayland_client.x));
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(xwayland_client.y));
+    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(xwayland.x));
+    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(xwayland.y));
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resize), event: *wlr.XwaylandSurface.event.Resize) void {
     const xwayland: *Self = @fieldParentPtr("request_resize_listener", listener);
-    const xwayland_client = client.Client.from(xwayland);
+    const xwayland_window = window.Window.from(xwayland);
 
     if (xwayland.wlr_xwayland_surface.surface == null or !xwayland.wlr_xwayland_surface.surface.?.mapped) {
         return;
@@ -165,25 +176,25 @@ fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resiz
 
     const edges: wlr.Edges = @bitCast(event.edges);
 
-    owm.server.grabbed_client = xwayland_client;
+    owm.server.grabbed_window = xwayland_window;
     owm.server.cursor_mode = .resize;
     owm.server.resize_edges = edges;
 
     const box: wlr.Box = .{
-        .x = xwayland_client.x,
-        .y = xwayland_client.y,
+        .x = xwayland.x,
+        .y = xwayland.y,
         .width = xwayland.wlr_xwayland_surface.width,
         .height = xwayland.wlr_xwayland_surface.height,
     };
 
-    const border_x = xwayland_client.x + box.x + if (edges.right) box.width else 0;
-    const border_y = xwayland_client.y + box.y + if (edges.bottom) box.height else 0;
+    const border_x = xwayland.x + box.x + if (edges.right) box.width else 0;
+    const border_y = xwayland.y + box.y + if (edges.bottom) box.height else 0;
     owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
     owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
 
     owm.server.grab_box = box;
-    owm.server.grab_box.x += xwayland_client.x;
-    owm.server.grab_box.y += xwayland_client.y;
+    owm.server.grab_box.x += xwayland.x;
+    owm.server.grab_box.y += xwayland.y;
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
@@ -196,5 +207,5 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     xwayland.request_resize_listener.link.remove();
     xwayland.destroy_listener.link.remove();
 
-    owm.c_alloc.destroy(client.Client.from(xwayland));
+    owm.c_alloc.destroy(window.Window.from(xwayland));
 }

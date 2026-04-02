@@ -26,7 +26,7 @@ destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 pub const ExclusiveZone = struct {
     type: Type,
     size: u32,
-    owning_client: *owm.client.Client,
+    owner: *owm.client.LayerSurface,
     pub const Type = enum { Top, Right, Bottom, Left };
 };
 
@@ -198,10 +198,10 @@ pub fn addExclusiveZone(self: *Output, exclusive_zone: ExclusiveZone) error{OutO
     self.recalculateWorkArea();
 }
 
-pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.client.Client) void {
+pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.client.LayerSurface) void {
     var index: ?usize = null;
     for (self.exclusive_zones.items, 0..) |*zone, i| {
-        if (zone.owning_client == owner) {
+        if (zone.owner == owner) {
             index = i;
         }
     }
@@ -242,7 +242,7 @@ pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.client.Client) void
                     right += size;
                 },
             }
-            zone.owning_client.setPos(new_x, new_y);
+            zone.owner.setPos(new_x, new_y);
         }
     }
 }
