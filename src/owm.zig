@@ -6,10 +6,12 @@ const std = @import("std");
 pub const c_alloc = std.heap.c_allocator;
 pub const alloc = std.heap.page_allocator;
 
-pub const log = @import("log/log.zig");
-pub const config = @import("config/config.zig");
 pub const client = @import("client/client.zig");
+pub const config = @import("config/config.zig");
+pub const log = @import("log/log.zig");
+pub const math = @import("math/math.zig");
 
+pub const Cursor = @import("Cursor.zig");
 pub const Keyboard = @import("Keyboard.zig");
 pub const Output = @import("Output.zig");
 

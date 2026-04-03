@@ -1,0 +1,212 @@
+const Self = @This();
+
+const wl = @import("wayland").server.wl;
+const wlr = @import("wlroots");
+
+const owm = @import("root").owm;
+const log = owm.log;
+
+const MIN_CLIENT_WIDTH = 240;
+const MIN_CLIENT_HEIGHT = 135;
+
+wlr_cursor: *wlr.Cursor,
+wlr_cursor_manager: *wlr.XcursorManager,
+grabbed_window: ?*owm.client.window.Window = null,
+cursor_mode: enum { passthrough, move, resize } = .passthrough,
+grab_x: f64 = 0,
+grab_y: f64 = 0,
+grab_box: wlr.Box = undefined,
+resize_edges: wlr.Edges = .{},
+cursor_motion_listener: wl.Listener(*wlr.Pointer.event.Motion) = .init(cursorMotionCallback),
+cursor_motion_absolute_listener: wl.Listener(*wlr.Pointer.event.MotionAbsolute) = .init(cursorMotionAbsoluteCallback),
+cursor_button_listener: wl.Listener(*wlr.Pointer.event.Button) = .init(cursorButtonCallback),
+cursor_axis_listener: wl.Listener(*wlr.Pointer.event.Axis) = .init(cursorAxisCallback),
+cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
+
+pub fn create() !Self {
+    return .{
+        .wlr_cursor = try wlr.Cursor.create(), // Mouse
+        .wlr_cursor_manager = try wlr.XcursorManager.create(null, 24), // Sources cursor images
+    };
+}
+
+pub fn init(self: *Self, wlr_output_layout: *wlr.OutputLayout) !void {
+    self.wlr_cursor.attachOutputLayout(wlr_output_layout);
+    try self.wlr_cursor_manager.load(1);
+    self.wlr_cursor.events.motion.add(&self.cursor_motion_listener);
+    self.wlr_cursor.events.motion_absolute.add(&self.cursor_motion_absolute_listener);
+    self.wlr_cursor.events.button.add(&self.cursor_button_listener);
+    self.wlr_cursor.events.axis.add(&self.cursor_axis_listener);
+    self.wlr_cursor.events.frame.add(&self.cursor_frame_listener);
+}
+
+pub fn deinit(self: *Self) void {
+    self.cursor_motion_listener.link.remove();
+    self.cursor_motion_absolute_listener.link.remove();
+    self.cursor_button_listener.link.remove();
+    self.cursor_axis_listener.link.remove();
+    self.cursor_frame_listener.link.remove();
+}
+
+pub fn getOutputAtCursor(self: *Self) ?*owm.Output {
+    return owm.server.outputAt(self.wlr_cursor.x, self.wlr_cursor.y);
+}
+
+pub fn getPos(self: *Self, comptime T: type) owm.math.Vec2(T) {
+    return .{
+        .x = @as(T, @intFromFloat(self.wlr_cursor.x)),
+        .y = @as(T, @intFromFloat(self.wlr_cursor.y)),
+    };
+}
+
+pub fn resetCursorMode(self: *Self) void {
+    self.cursor_mode = .passthrough;
+    self.grabbed_window = null;
+}
+
+pub fn resetCursorModeIfGrabbedWindow(self: *Self, window: *owm.client.window.Window) void {
+    if (self.grabbed_window == window) {
+        self.resetCursorMode();
+    }
+}
+
+pub fn requestMove(self: *Self, window: *owm.client.window.Window) void {
+    const window_pos = window.getPos();
+
+    self.grabbed_window = window;
+    self.cursor_mode = .move;
+    self.grab_x = self.wlr_cursor.x - @as(f64, @floatFromInt(window_pos.x));
+    self.grab_y = self.wlr_cursor.y - @as(f64, @floatFromInt(window_pos.y));
+}
+
+pub fn requestResize(self: *Self, window: *owm.client.window.Window, edges: wlr.Edges) void {
+    const window_pos = window.getPos();
+    const window_geom = window.getGeom();
+
+    self.grabbed_window = window;
+    self.cursor_mode = .resize;
+    self.resize_edges = edges;
+
+    const border_x = window_pos.x + window_geom.x + if (edges.right) window_geom.width else 0;
+    const border_y = window_pos.y + window_geom.y + if (edges.bottom) window_geom.height else 0;
+    self.grab_x = self.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
+    self.grab_y = self.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
+
+    self.grab_box = window_geom;
+    self.grab_box.x += window_geom.x;
+    self.grab_box.y += window_geom.y;
+}
+
+fn processCursorMotion(self: *Self, time: u32) void {
+    if (self.cursor_mode == .move) {
+        const grabbed_window = self.grabbed_window.?;
+        grabbed_window.setPos(
+            @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
+            @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
+        );
+        return;
+    } else if (self.cursor_mode == .resize) {
+        const grabbed_window = self.grabbed_window.?;
+        const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
+        const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
+
+        var new_left = self.grab_box.x;
+        var new_right = self.grab_box.x + self.grab_box.width;
+        var new_top = self.grab_box.y;
+        var new_bottom = self.grab_box.y + self.grab_box.height;
+
+        if (self.resize_edges.top) {
+            new_top = border_y;
+            if (new_top + MIN_CLIENT_HEIGHT >= new_bottom) { // Make sure new_top isn't below new_bottom
+                new_top = new_bottom - MIN_CLIENT_HEIGHT;
+            }
+        } else if (self.resize_edges.bottom) {
+            new_bottom = border_y;
+            if (new_bottom - MIN_CLIENT_HEIGHT <= new_top) { // Make sure new_bottom isn't above new_top
+                new_bottom = new_top + MIN_CLIENT_HEIGHT;
+            }
+        }
+
+        if (self.resize_edges.left) {
+            new_left = border_x;
+            if (new_left + MIN_CLIENT_WIDTH >= new_right) { // Make sure new_left isn't right of new_right
+                new_left = new_right - MIN_CLIENT_WIDTH;
+            }
+        } else if (self.resize_edges.right) {
+            new_right = border_x;
+            if (new_right - MIN_CLIENT_WIDTH <= new_left) { // Make sure new_right isn't left of new_left
+                new_right = new_left + MIN_CLIENT_WIDTH;
+            }
+        }
+
+        const box = grabbed_window.getGeom();
+        const new_x = new_left - box.x;
+        const new_y = new_top - box.y;
+        grabbed_window.setPos(new_x, new_y);
+
+        const new_width: i32 = new_right - new_left;
+        const new_height: i32 = new_bottom - new_top;
+        grabbed_window.setSize(new_width, new_height);
+        return;
+    }
+
+    if (owm.server.viewAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
+        owm.server.wlr_seat.pointerNotifyEnter(response.wlr_surface, response.sx, response.sy);
+        owm.server.wlr_seat.pointerNotifyMotion(time, response.sx, response.sy);
+    } else {
+        self.wlr_cursor.setXcursor(self.wlr_cursor_manager, "default");
+        owm.server.wlr_seat.pointerClearFocus();
+    }
+}
+
+/// Called when pointer emits relative (_delta_) motion events
+fn cursorMotionCallback(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
+    const self: *Self = @fieldParentPtr("cursor_motion_listener", listener);
+    self.wlr_cursor.move(event.device, event.delta_x, event.delta_y);
+    self.processCursorMotion(event.time_msec);
+}
+
+/// Called when pointer emits an absolute motion event, e.g. on Wayland or X11 backend, pointer enters the window
+fn cursorMotionAbsoluteCallback(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
+    const self: *Self = @fieldParentPtr("cursor_motion_absolute_listener", listener);
+    self.wlr_cursor.warpAbsolute(event.device, event.x, event.y);
+    self.processCursorMotion(event.time_msec);
+}
+
+fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
+    const self: *Self = @fieldParentPtr("cursor_button_listener", listener);
+    _ = owm.server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
+    if (event.state == .released) {
+        if (self.grabbed_window) |grabbed_window| {
+            if (self.getOutputAtCursor()) |output| {
+                grabbed_window.setCurrentOutput(output);
+            }
+        }
+        self.resetCursorMode();
+    } else {
+        if (owm.server.windowAt(self.wlr_cursor.x, self.wlr_cursor.y)) |result| {
+            owm.server.focusWindow(result.window);
+        } else if (owm.server.focused_window) |window| {
+            window.setFocus(false);
+            owm.server.focused_window = null;
+            owm.server.wlr_seat.keyboardNotifyClearFocus();
+        }
+    }
+}
+
+fn cursorAxisCallback(_: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
+    owm.server.wlr_seat.pointerNotifyAxis(
+        event.time_msec,
+        event.orientation,
+        event.delta,
+        event.delta_discrete,
+        event.source,
+        event.relative_direction,
+    );
+}
+
+/// Frame events are sent after regular pointer events to group multiple events together.
+/// E.g. 2 axis events may hapen at the same time, in which case a farme event won't be sent in between
+fn cursorFrameCallback(_: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
+    owm.server.wlr_seat.pointerNotifyFrame();
+}

@@ -83,6 +83,17 @@ pub const Window = struct {
         }
     }
 
+    pub fn getPos(self: *Self) owm.math.Vec2(i32) {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                return t.pos;
+            },
+            .xwayland => |*xw| {
+                return xw.pos;
+            },
+        }
+    }
+
     pub fn getGeom(self: *Self) wlr.Box {
         switch (self.window) {
             .xdg_toplevel => |*t| {

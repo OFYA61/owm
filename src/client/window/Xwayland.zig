@@ -13,8 +13,7 @@ const window = owm.client.window;
 wlr_xwayland_surface: *wlr.XwaylandSurface,
 current_output: *owm.Output,
 wlr_scene_tree: ?*wlr.SceneTree = null,
-x: i32 = 0,
-y: i32 = 0,
+pos: owm.math.Vec2(i32) = .{ .x = 0, .y = 0 },
 
 request_configure_listener: wl.Listener(*wlr.XwaylandSurface.event.Configure) = .init(requestConfigureCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -27,7 +26,7 @@ dissociate_listener: wl.Listener(void) = .init(dissociateCallback),
 destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
 pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) owm.client.Error!Self {
-    const output = owm.server.outputAtCursor() orelse return owm.client.Error.CursorNotOnOutput;
+    const output = owm.server.cursor.getOutputAtCursor() orelse return owm.client.Error.CursorNotOnOutput;
 
     return .{
         .wlr_xwayland_surface = wlr_xwayland_surface,
@@ -55,16 +54,16 @@ pub fn toggleMaximize(self: *Self) void {
 
 pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
     if (self.wlr_scene_tree) |scene_tree| {
-        self.x = new_x;
-        self.y = new_y;
+        self.pos.x = new_x;
+        self.pos.y = new_y;
         scene_tree.node.setPosition(new_x, new_y);
     }
 }
 
 pub fn setSize(self: *Self, new_width: u16, new_height: u16) void {
     self.wlr_xwayland_surface.configure(
-        @as(i16, @intCast(self.x)),
-        @as(i16, @intCast(self.y)),
+        @as(i16, @intCast(self.pos.x)),
+        @as(i16, @intCast(self.pos.y)),
         new_width,
         new_height,
     );
@@ -72,8 +71,8 @@ pub fn setSize(self: *Self, new_width: u16, new_height: u16) void {
 
 pub fn getGeom(self: *Self) wlr.Box {
     return .{
-        .x = self.x,
-        .y = self.y,
+        .x = self.pos.x,
+        .y = self.pos.y,
         .width = @as(i32, @intCast(self.wlr_xwayland_surface.width)),
         .height = @as(i32, @intCast(self.wlr_xwayland_surface.height)),
     };
@@ -87,8 +86,8 @@ fn requestConfigureCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Co
     }
 
     xwayland.wlr_xwayland_surface.configure(
-        @as(i16, @intCast(xwayland.x)),
-        @as(i16, @intCast(xwayland.y)),
+        @as(i16, @intCast(xwayland.pos.x)),
+        @as(i16, @intCast(xwayland.pos.y)),
         configure.width,
         configure.height,
     );
@@ -150,7 +149,6 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
 
 fn requestMoveCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("request_move_listener", listener);
-    const xwayland_window = window.Window.from(xwayland);
 
     if (xwayland.wlr_xwayland_surface.surface == null or !xwayland.wlr_xwayland_surface.surface.?.mapped) {
         return;
@@ -160,10 +158,7 @@ fn requestMoveCallback(listener: *wl.Listener(void)) void {
     // 1. Unmaximize
     // 2. Set to previous position
 
-    owm.server.grabbed_window = xwayland_window;
-    owm.server.cursor_mode = .move;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(xwayland.x));
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(xwayland.y));
+    owm.server.cursor.requestMove(window.Window.from(xwayland));
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resize), event: *wlr.XwaylandSurface.event.Resize) void {
@@ -174,27 +169,7 @@ fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resiz
         return;
     }
 
-    const edges: wlr.Edges = @bitCast(event.edges);
-
-    owm.server.grabbed_window = xwayland_window;
-    owm.server.cursor_mode = .resize;
-    owm.server.resize_edges = edges;
-
-    const box: wlr.Box = .{
-        .x = xwayland.x,
-        .y = xwayland.y,
-        .width = xwayland.wlr_xwayland_surface.width,
-        .height = xwayland.wlr_xwayland_surface.height,
-    };
-
-    const border_x = xwayland.x + box.x + if (edges.right) box.width else 0;
-    const border_y = xwayland.y + box.y + if (edges.bottom) box.height else 0;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
-
-    owm.server.grab_box = box;
-    owm.server.grab_box.x += xwayland.x;
-    owm.server.grab_box.y += xwayland.y;
+    owm.server.cursor.requestResize(xwayland_window, @bitCast(event.edges));
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {

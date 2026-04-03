@@ -9,9 +9,6 @@ const xkb = @import("xkbcommon");
 const owm = @import("owm.zig");
 const log = owm.log;
 
-const MIN_CLIENT_WIDTH = 240;
-const MIN_CLIENT_HEIGHT = 135;
-
 wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
 
@@ -43,19 +40,7 @@ new_input_listener: wl.Listener(*wlr.InputDevice) = .init(newInputCallback),
 request_set_cursor_listener: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursorCallback),
 request_set_selection_listener: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelectionCallback),
 
-wlr_cursor: *wlr.Cursor,
-wlr_cursor_manager: *wlr.XcursorManager,
-grabbed_window: ?*owm.client.window.Window = null,
-cursor_mode: enum { passthrough, move, resize } = .passthrough,
-grab_x: f64 = 0,
-grab_y: f64 = 0,
-grab_box: wlr.Box = undefined,
-resize_edges: wlr.Edges = .{},
-cursor_motion_listener: wl.Listener(*wlr.Pointer.event.Motion) = .init(cursorMotionCallback),
-cursor_motion_absolute_listener: wl.Listener(*wlr.Pointer.event.MotionAbsolute) = .init(cursorMotionAbsoluteCallback),
-cursor_button_listener: wl.Listener(*wlr.Pointer.event.Button) = .init(cursorButtonCallback),
-cursor_axis_listener: wl.Listener(*wlr.Pointer.event.Axis) = .init(cursorAxisCallback),
-cursor_frame_listener: wl.Listener(*wlr.Cursor) = .init(cursorFrameCallback),
+cursor: owm.Cursor,
 
 pub fn init(self: *Server) anyerror!void {
     wlr.log.init(.err, null);
@@ -72,8 +57,6 @@ pub fn init(self: *Server) anyerror!void {
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
     const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3); // XDG protocol for app windows
     const wlr_seat = try wlr.Seat.create(wl_server, "seat0"); // Input device seat
-    const wlr_cursor = try wlr.Cursor.create(); // Mouse
-    const wlr_cursor_manager = try wlr.XcursorManager.create(null, 24); // Sources cursor images
 
     const wlr_compositor = try wlr.Compositor.create(wl_server, 6, wlr_renderer); // Allows clients to allocate surfaces
     _ = try wlr.Subcompositor.create(wl_server); // Allows clients to assign role to subsurfaces
@@ -100,8 +83,7 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .wlr_xdg_shell = wlr_xdg_shell,
         .wlr_seat = wlr_seat,
-        .wlr_cursor = wlr_cursor,
-        .wlr_cursor_manager = wlr_cursor_manager,
+        .cursor = try owm.Cursor.create(),
         .wlr_xwayland = wlr_xwayland,
     };
 
@@ -120,13 +102,7 @@ pub fn init(self: *Server) anyerror!void {
     self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
     self.wlr_seat.events.request_set_selection.add(&self.request_set_selection_listener);
 
-    self.wlr_cursor.attachOutputLayout(self.wlr_output_layout);
-    try self.wlr_cursor_manager.load(1);
-    wlr_cursor.events.motion.add(&self.cursor_motion_listener);
-    wlr_cursor.events.motion_absolute.add(&self.cursor_motion_absolute_listener);
-    wlr_cursor.events.button.add(&self.cursor_button_listener);
-    wlr_cursor.events.axis.add(&self.cursor_axis_listener);
-    wlr_cursor.events.frame.add(&self.cursor_frame_listener);
+    try self.cursor.init(self.wlr_output_layout);
 
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 
@@ -146,11 +122,8 @@ pub fn deinit(self: *Server) void {
     self.new_toplevel_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();
-    self.cursor_motion_listener.link.remove();
-    self.cursor_motion_absolute_listener.link.remove();
-    self.cursor_button_listener.link.remove();
-    self.cursor_axis_listener.link.remove();
-    self.cursor_frame_listener.link.remove();
+
+    self.cursor.deinit();
 
     self.wlr_xwayland.destroy();
     self.wlr_backend.destroy();
@@ -218,6 +191,7 @@ pub fn focusWindow(self: *Server, new_window: *owm.client.window.Window) void {
     }
 
     new_window.setFocus(true);
+    self.focused_window = new_window;
 
     const wlr_keyboard = self.wlr_seat.getKeyboard() orelse return;
     self.wlr_seat.keyboardNotifyEnter(
@@ -228,7 +202,6 @@ pub fn focusWindow(self: *Server, new_window: *owm.client.window.Window) void {
 
     new_window.link.remove();
     self.windows.prepend(new_window);
-    self.focused_window = new_window;
 }
 
 fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
@@ -246,10 +219,6 @@ fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
     try child.spawn();
 }
 
-pub fn outputAtCursor(self: *Server) ?*owm.Output {
-    return self.outputAt(self.wlr_cursor.x, self.wlr_cursor.y);
-}
-
 pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
     var output_iterator = self.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
@@ -265,11 +234,6 @@ pub fn outputAt(self: *Server, lx: f64, ly: f64) ?*owm.Output {
     return null;
 }
 
-pub fn resetCursorMode(self: *Server) void {
-    self.cursor_mode = .passthrough;
-    self.grabbed_window = null;
-}
-
 const WindowAtResponse = struct {
     sx: f64,
     sy: f64,
@@ -277,7 +241,7 @@ const WindowAtResponse = struct {
     window: *owm.client.window.Window,
 };
 
-fn windowAt(self: *Server, lx: f64, ly: f64) ?WindowAtResponse {
+pub fn windowAt(self: *Server, lx: f64, ly: f64) ?WindowAtResponse {
     var sx: f64 = undefined;
     var sy: f64 = undefined;
     if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
@@ -307,7 +271,7 @@ const ViewAtResponse = struct {
     wlr_surface: *wlr.Surface,
 };
 
-fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
+pub fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
     var sx: f64 = undefined;
     var sy: f64 = undefined;
     if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
@@ -322,68 +286,6 @@ fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
     }
 
     return null;
-}
-
-fn processCursorMotion(self: *Server, time: u32) void {
-    if (self.cursor_mode == .move) {
-        const grabbed_window = self.grabbed_window.?;
-        grabbed_window.setPos(
-            @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x)),
-            @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y)),
-        );
-        return;
-    } else if (self.cursor_mode == .resize) {
-        const grabbed_window = self.grabbed_window.?;
-        const border_x = @as(i32, @intFromFloat(self.wlr_cursor.x - self.grab_x));
-        const border_y = @as(i32, @intFromFloat(self.wlr_cursor.y - self.grab_y));
-
-        var new_left = self.grab_box.x;
-        var new_right = self.grab_box.x + self.grab_box.width;
-        var new_top = self.grab_box.y;
-        var new_bottom = self.grab_box.y + self.grab_box.height;
-
-        if (self.resize_edges.top) {
-            new_top = border_y;
-            if (new_top + MIN_CLIENT_HEIGHT >= new_bottom) { // Make sure new_top isn't below new_bottom
-                new_top = new_bottom - MIN_CLIENT_HEIGHT;
-            }
-        } else if (self.resize_edges.bottom) {
-            new_bottom = border_y;
-            if (new_bottom - MIN_CLIENT_HEIGHT <= new_top) { // Make sure new_bottom isn't above new_top
-                new_bottom = new_top + MIN_CLIENT_HEIGHT;
-            }
-        }
-
-        if (self.resize_edges.left) {
-            new_left = border_x;
-            if (new_left + MIN_CLIENT_WIDTH >= new_right) { // Make sure new_left isn't right of new_right
-                new_left = new_right - MIN_CLIENT_WIDTH;
-            }
-        } else if (self.resize_edges.right) {
-            new_right = border_x;
-            if (new_right - MIN_CLIENT_WIDTH <= new_left) { // Make sure new_right isn't left of new_left
-                new_right = new_left + MIN_CLIENT_WIDTH;
-            }
-        }
-
-        const box = grabbed_window.getGeom();
-        const new_x = new_left - box.x;
-        const new_y = new_top - box.y;
-        grabbed_window.setPos(new_x, new_y);
-
-        const new_width: i32 = new_right - new_left;
-        const new_height: i32 = new_bottom - new_top;
-        grabbed_window.setSize(new_width, new_height);
-        return;
-    }
-
-    if (self.viewAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
-        self.wlr_seat.pointerNotifyEnter(response.wlr_surface, response.sx, response.sy);
-        self.wlr_seat.pointerNotifyMotion(time, response.sx, response.sy);
-    } else {
-        self.wlr_cursor.setXcursor(self.wlr_cursor_manager, "default");
-        self.wlr_seat.pointerClearFocus();
-    }
 }
 
 /// Called when a new display is discovered
@@ -506,7 +408,7 @@ fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr
 
     switch (input_device.type) {
         .pointer => {
-            server.wlr_cursor.attachInputDevice(input_device);
+            server.cursor.wlr_cursor.attachInputDevice(input_device);
         },
         .keyboard => {
             _ = owm.Keyboard.create(input_device) catch |err| {
@@ -523,7 +425,7 @@ fn requestSetCursorCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetCur
     const server: *Server = @fieldParentPtr("request_set_cursor_listener", listener);
     if (server.wlr_seat.pointer_state.focused_client) |client| {
         if (client == event.seat_client) { // Make sure the requesting client is focused
-            server.wlr_cursor.setSurface(event.surface, event.hotspot_x, event.hotspot_y);
+            server.cursor.wlr_cursor.setSurface(event.surface, event.hotspot_x, event.hotspot_y);
         }
     }
 }
@@ -532,60 +434,6 @@ fn requestSetCursorCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetCur
 fn requestSetSelectionCallback(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
     const server: *Server = @fieldParentPtr("request_set_selection_listener", listener);
     server.wlr_seat.setSelection(event.source, event.serial);
-}
-
-/// Called when pointer emits relative (_delta_) motion events
-fn cursorMotionCallback(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
-    const server: *Server = @fieldParentPtr("cursor_motion_listener", listener);
-    server.wlr_cursor.move(event.device, event.delta_x, event.delta_y);
-    server.processCursorMotion(event.time_msec);
-}
-
-/// Called when pointer emits an absolute motion event, e.g. on Wayland or X11 backend, pointer enters the window
-fn cursorMotionAbsoluteCallback(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
-    const server: *Server = @fieldParentPtr("cursor_motion_absolute_listener", listener);
-    server.wlr_cursor.warpAbsolute(event.device, event.x, event.y);
-    server.processCursorMotion(event.time_msec);
-}
-
-fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
-    const server: *Server = @fieldParentPtr("cursor_button_listener", listener);
-    _ = server.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
-    if (event.state == .released) {
-        if (server.grabbed_window) |grabbed_window| {
-            if (server.outputAtCursor()) |output| {
-                grabbed_window.setCurrentOutput(output);
-            }
-        }
-        server.resetCursorMode();
-    } else {
-        if (server.windowAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
-            server.focusWindow(result.window);
-        } else if (server.focused_window) |window| {
-            window.setFocus(false);
-            server.focused_window = null;
-            server.wlr_seat.keyboardNotifyClearFocus();
-        }
-    }
-}
-
-fn cursorAxisCallback(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
-    const server: *Server = @fieldParentPtr("cursor_axis_listener", listener);
-    server.wlr_seat.pointerNotifyAxis(
-        event.time_msec,
-        event.orientation,
-        event.delta,
-        event.delta_discrete,
-        event.source,
-        event.relative_direction,
-    );
-}
-
-/// Frame events are sent after regular pointer events to group multiple events together.
-/// E.g. 2 axis events may hapen at the same time, in which case a farme event won't be sent in between
-fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
-    const server: *Server = @fieldParentPtr("cursor_frame_listener", listener);
-    server.wlr_seat.pointerNotifyFrame();
 }
 
 fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
