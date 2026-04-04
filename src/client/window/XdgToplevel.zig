@@ -8,7 +8,7 @@ const wlr = @import("wlroots");
 const owm = @import("root").owm;
 const client = owm.client;
 const log = owm.log;
-const window = owm.client.window;
+const Window = owm.client.window.Window;
 
 pub const SPAWN_SIZE_X = 640;
 pub const SPAWN_SIZE_Y = 360;
@@ -30,7 +30,7 @@ request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize) = .init(requ
 request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
-pub fn create(xdg_toplevel_window: *window.Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
+pub fn create(xdg_toplevel_window: *Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
     const scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         log.err("Failed to create scene tree for XdgToplevel");
         return client.Error.FailedToCreateSceneTree;
@@ -76,6 +76,7 @@ pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
         self.wlr_scene_tree.node.raiseToTop();
+        owm.server.scene.raiseWindowToTopOfWorkspace(Window.from(self));
     }
 }
 
@@ -135,15 +136,15 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 /// Called when the surface is mapped, or ready to display on screen
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
-    const xdg_toplevel_window = window.Window.from(toplevel);
-    owm.server.windows.prepend(xdg_toplevel_window);
+    const xdg_toplevel_window = Window.from(toplevel);
+    owm.server.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
     owm.server.focusWindow(xdg_toplevel_window);
 }
 
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("unmap_listener", listener);
-    const xdg_toplevel_window = window.Window.from(toplevel);
+    const xdg_toplevel_window = Window.from(toplevel);
     if (owm.server.grabbed_window == xdg_toplevel_window) {
         owm.server.resetCursorMode();
     }
@@ -178,16 +179,18 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel.request_maximize_listener.link.remove();
     toplevel.request_fullscreen_listener.link.remove();
 
-    if (owm.server.focused_window == window.Window.from(toplevel)) {
+    const xdg_toplevel_window = Window.from(toplevel);
+    if (owm.server.focused_window == xdg_toplevel_window) {
         owm.server.focused_window = null;
+        owm.server.focusTopWindow();
     }
 
-    owm.c_alloc.destroy(window.Window.from(toplevel));
+    owm.c_alloc.destroy(xdg_toplevel_window);
 }
 
 fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *wlr.XdgToplevel.event.Move) void {
     const toplevel: *Self = @fieldParentPtr("request_move_listener", listener);
-    const xdg_toplevel_window = window.Window.from(toplevel);
+    const xdg_toplevel_window = Window.from(toplevel);
     if (toplevel.wlr_xdg_toplevel.current.maximized) {
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
@@ -205,7 +208,7 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Self = @fieldParentPtr("request_resize_listener", listener);
-    const xdg_toplevel_window = window.Window.from(toplevel);
+    const xdg_toplevel_window = Window.from(toplevel);
 
     owm.server.grabbed_window = xdg_toplevel_window;
     owm.server.cursor_mode = .resize;

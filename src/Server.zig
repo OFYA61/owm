@@ -31,7 +31,6 @@ wlr_xwayland: *wlr.Xwayland,
 xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylandNewSurfaceCallback),
 
 wlr_xdg_shell: *wlr.XdgShell,
-windows: wl.list.Head(owm.client.window.Window, .link) = undefined,
 new_xdg_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 new_xdg_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
 
@@ -95,8 +94,6 @@ pub fn init(self: *Server) anyerror!void {
     _ = try wl_server.addSocketAuto(&self.wl_socket);
 
     try self.wlr_renderer.initServer(wl_server);
-
-    self.windows.init();
 
     self.outputs.init();
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
@@ -185,17 +182,22 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
         },
         xkb.Keysym.F1 => {
             if (self.focused_window) |_| {
-                const first_window = self.windows.first().?;
-                first_window.link.remove();
-                self.windows.append(first_window);
-                self.focusWindow(self.windows.first().?);
-            } else if (self.windows.first()) |first_client| {
-                self.focusWindow(first_client);
+                if (self.scene.switchToNextWindowInWorkspace()) |next_window| {
+                    self.focusWindow(next_window);
+                }
+            } else {
+                self.focusTopWindow();
             }
         },
         else => return false,
     }
     return true;
+}
+
+pub fn focusTopWindow(self: *Server) void {
+    if (self.scene.getTopWindowInWorkspace()) |top_window| {
+        self.focusWindow(top_window);
+    }
 }
 
 pub fn focusWindow(self: *Server, new_window: *owm.client.window.Window) void {
@@ -214,9 +216,6 @@ pub fn focusWindow(self: *Server, new_window: *owm.client.window.Window) void {
         wlr_keyboard.keycodes[0..wlr_keyboard.num_keycodes],
         &wlr_keyboard.modifiers,
     );
-
-    new_window.link.remove();
-    self.windows.prepend(new_window);
     self.focused_window = new_window;
 }
 

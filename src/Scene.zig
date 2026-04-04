@@ -1,5 +1,7 @@
 const Self = @This();
 
+const std = @import("std");
+
 const wl = @import("wayland").server.wl;
 const zwlr = @import("wayland").server.zwlr;
 const wlr = @import("wlroots");
@@ -7,11 +9,13 @@ const wlr = @import("wlroots");
 const owm = @import("root").owm;
 const log = owm.log;
 
+const Window = owm.client.window.Window;
+
 pub const WindowAtResponse = struct {
     sx: f64,
     sy: f64,
     wlr_surface: *wlr.Surface,
-    window: *owm.client.window.Window,
+    window: *Window,
 };
 
 pub const SurfaceAtResponse = struct {
@@ -20,8 +24,16 @@ pub const SurfaceAtResponse = struct {
     wlr_surface: *wlr.Surface,
 };
 
+pub const Workspace = struct {
+    root: *wlr.SceneTree,
+    windows: wl.list.Head(Window, .link) = undefined,
+};
+
 wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
+
+workspaces: std.ArrayList(Workspace) = .empty,
+current_workspace_idx: usize = 0,
 
 root: *wlr.SceneTree,
 layers: struct {
@@ -45,10 +57,11 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
     const wlr_scene = try wlr.Scene.create();
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
     const root = try wlr_scene.tree.createSceneTree();
-    return .{
+    var new_scene = Self{
         .wlr_scene = wlr_scene,
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .root = root,
+        .current_workspace_idx = 0,
         .layers = .{
             .background = try root.createSceneTree(),
             .bottom = try root.createSceneTree(),
@@ -59,11 +72,53 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
             .override_redirect = try root.createSceneTree(),
         },
     };
+
+    try new_scene.createWorkspace();
+
+    return new_scene;
 }
 
-// TODO: modify this when implementing multiple workspaces
+fn createWorkspace(self: *Self) !void {
+    try self.workspaces.append(
+        owm.alloc,
+        .{
+            .root = try self.layers.workspace.createSceneTree(),
+        },
+    );
+    self.workspaces.items[self.current_workspace_idx].windows.init();
+}
+
+fn getCurrentWorkspace(self: *Self) *Workspace {
+    return &self.workspaces.items[self.current_workspace_idx];
+}
+
 pub fn getCurrentWorkspaceRoot(self: *Self) *wlr.SceneTree {
-    return self.layers.workspace;
+    return self.getCurrentWorkspace().root;
+}
+
+pub fn addWindowToCurrentWorkspace(self: *Self, window: *Window) void {
+    self.getCurrentWorkspace().windows.append(window);
+}
+
+pub fn raiseWindowToTopOfWorkspace(self: *Self, window: *Window) void {
+    window.link.remove();
+    self.getCurrentWorkspace().windows.prepend(window);
+}
+
+/// Puts the topmost window at the end of the list and returns the new top window.
+/// Also known as `Alt+Tab`
+pub fn switchToNextWindowInWorkspace(self: *Self) ?*Window {
+    var workspace = self.getCurrentWorkspace();
+    if (workspace.windows.first()) |first_window| {
+        first_window.link.remove();
+        workspace.windows.append(first_window);
+        return workspace.windows.first().?;
+    }
+    return null;
+}
+
+pub fn getTopWindowInWorkspace(self: *Self) ?*Window {
+    return self.getCurrentWorkspace().windows.first();
 }
 
 pub fn getLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
@@ -86,7 +141,7 @@ pub fn windowAt(self: *Self, lx: f64, ly: f64) ?WindowAtResponse {
 
         var it: ?*wlr.SceneTree = node.parent;
         while (it) |n| : (it = n.node.parent) {
-            if (owm.client.window.Window.fromOpaquePtr(n.node.data)) |window| {
+            if (Window.fromOpaquePtr(n.node.data)) |window| {
                 return WindowAtResponse{
                     .sx = sx,
                     .sy = sy,
