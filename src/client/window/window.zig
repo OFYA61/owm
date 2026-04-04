@@ -20,6 +20,7 @@ pub const Window = struct {
     window: WindowType,
 
     pub fn newXdgToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!*Self {
+        log.info("New XdgToplevel");
         var window = try owm.c_alloc.create(Self);
         errdefer owm.c_alloc.destroy(window);
 

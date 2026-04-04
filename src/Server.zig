@@ -15,10 +15,7 @@ const MIN_CLIENT_HEIGHT = 135;
 wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
 
-wlr_scene: *wlr.Scene,
-scene_tree_apps: *wlr.SceneTree,
-scene_tree_foreground: *wlr.SceneTree,
-wlr_scene_output_layout: *wlr.SceneOutputLayout,
+scene: owm.Scene,
 
 wlr_backend: *wlr.Backend,
 wlr_allocator: *wlr.Allocator,
@@ -35,7 +32,8 @@ xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylan
 
 wlr_xdg_shell: *wlr.XdgShell,
 windows: wl.list.Head(owm.client.window.Window, .link) = undefined,
-new_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
+new_xdg_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
+new_xdg_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
 
 wlr_seat: *wlr.Seat,
 focused_window: ?*owm.client.window.Window = null,
@@ -68,8 +66,6 @@ pub fn init(self: *Server) anyerror!void {
     const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
     const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
     const wlr_layer_shell_v1 = try wlr.LayerShellV1.create(wl_server, 5); // Protocol for status bars
-    const wlr_scene = try wlr.Scene.create(); // Abstraction that handles all rendering and damage tracking
-    const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
     const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3); // XDG protocol for app windows
     const wlr_seat = try wlr.Seat.create(wl_server, "seat0"); // Input device seat
     const wlr_cursor = try wlr.Cursor.create(); // Mouse
@@ -81,23 +77,14 @@ pub fn init(self: *Server) anyerror!void {
     _ = try wlr.XdgOutputManagerV1.create(wl_server, wlr_output_layout); // Protocol required by `waybar`
     const wlr_xwayland = try wlr.Xwayland.create(wl_server, wlr_compositor, true);
 
-    const scene_tree_apps = try wlr_scene.tree.createSceneTree();
-    scene_tree_apps.node.setPosition(0, 0);
-    const scene_tree_foreground = try wlr_scene.tree.createSceneTree();
-    scene_tree_foreground.node.setPosition(0, 0);
-    scene_tree_foreground.node.raiseToTop();
-
     self.* = .{
         .wl_server = wl_server,
         .wlr_backend = wlr_backend,
         .wlr_renderer = wlr_renderer,
         .wlr_allocator = wlr_allocator,
-        .wlr_scene = wlr_scene,
-        .scene_tree_apps = scene_tree_apps,
-        .scene_tree_foreground = scene_tree_foreground,
         .wlr_output_layout = wlr_output_layout,
+        .scene = try owm.Scene.create(wlr_output_layout),
         .wlr_layer_shell_v1 = wlr_layer_shell_v1,
-        .wlr_scene_output_layout = wlr_scene_output_layout,
         .wlr_xdg_shell = wlr_xdg_shell,
         .wlr_seat = wlr_seat,
         .wlr_cursor = wlr_cursor,
@@ -114,7 +101,8 @@ pub fn init(self: *Server) anyerror!void {
     self.outputs.init();
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
-    self.wlr_xdg_shell.events.new_toplevel.add(&self.new_toplevel_listener);
+    self.wlr_xdg_shell.events.new_toplevel.add(&self.new_xdg_toplevel_listener);
+    self.wlr_xdg_shell.events.new_popup.add(&self.new_xdg_popup_listener);
 
     self.wlr_backend.events.new_input.add(&self.new_input_listener);
     self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
@@ -143,7 +131,8 @@ pub fn deinit(self: *Server) void {
     self.new_input_listener.link.remove();
     self.new_output_listener.link.remove();
 
-    self.new_toplevel_listener.link.remove();
+    self.new_xdg_toplevel_listener.link.remove();
+    self.new_xdg_popup_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();
     self.cursor_motion_listener.link.remove();
@@ -270,60 +259,6 @@ pub fn resetCursorMode(self: *Server) void {
     self.grabbed_window = null;
 }
 
-const WindowAtResponse = struct {
-    sx: f64,
-    sy: f64,
-    wlr_surface: *wlr.Surface,
-    window: *owm.client.window.Window,
-};
-
-fn windowAt(self: *Server, lx: f64, ly: f64) ?WindowAtResponse {
-    var sx: f64 = undefined;
-    var sy: f64 = undefined;
-    if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
-        if (node.type != .buffer) return null;
-        const scene_buffer = wlr.SceneBuffer.fromNode(node);
-        const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return null;
-
-        var it: ?*wlr.SceneTree = node.parent;
-        while (it) |n| : (it = n.node.parent) {
-            if (owm.client.window.Window.fromOpaquePtr(n.node.data)) |window| {
-                return WindowAtResponse{
-                    .sx = sx,
-                    .sy = sy,
-                    .wlr_surface = scene_surface.surface,
-                    .window = window,
-                };
-            }
-        }
-    }
-
-    return null;
-}
-
-const ViewAtResponse = struct {
-    sx: f64,
-    sy: f64,
-    wlr_surface: *wlr.Surface,
-};
-
-fn viewAt(self: *Server, lx: f64, ly: f64) ?ViewAtResponse {
-    var sx: f64 = undefined;
-    var sy: f64 = undefined;
-    if (self.wlr_scene.tree.node.at(lx, ly, &sx, &sy)) |node| {
-        if (node.type != .buffer) return null;
-        const scene_buffer = wlr.SceneBuffer.fromNode(node);
-        const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return null;
-        return ViewAtResponse{
-            .sx = sx,
-            .sy = sy,
-            .wlr_surface = scene_surface.surface,
-        };
-    }
-
-    return null;
-}
-
 fn processCursorMotion(self: *Server, time: u32) void {
     if (self.cursor_mode == .move) {
         const grabbed_window = self.grabbed_window.?;
@@ -377,7 +312,7 @@ fn processCursorMotion(self: *Server, time: u32) void {
         return;
     }
 
-    if (self.viewAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
+    if (self.scene.surfaceAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
         self.wlr_seat.pointerNotifyEnter(response.wlr_surface, response.sx, response.sy);
         self.wlr_seat.pointerNotifyMotion(time, response.sx, response.sy);
     } else {
@@ -496,6 +431,16 @@ fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *
     };
 }
 
+fn newXdgPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
+    const server: *Server = @fieldParentPtr("new_xdg_popup_listener", listener);
+    if (server.outputAtCursor()) |output| {
+        _ = owm.client.Popup.create(wlr_xdg_popup, server.scene.layers.popups, server.scene.layers.popups, output) catch |err| {
+            log.errf("Failed to create XDG Popup {}", .{err});
+            return;
+        };
+    }
+}
+
 /// Called when a new input device becomes available
 fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr.InputDevice) void {
     const server: *Server = @fieldParentPtr("new_input_listener", listener);
@@ -559,7 +504,7 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
         }
         server.resetCursorMode();
     } else {
-        if (server.windowAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
+        if (server.scene.windowAt(server.wlr_cursor.x, server.wlr_cursor.y)) |result| {
             server.focusWindow(result.window);
         } else if (server.focused_window) |window| {
             window.setFocus(false);
@@ -591,6 +536,11 @@ fn cursorFrameCallback(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void
 fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
     if (wlr_layer_surface.output == null) {
         wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
+    }
+
+    if (wlr_layer_surface.current.layer != .bottom) {
+        log.err("Only `bottom` layer shell surfaces are supported at the moment");
+        return;
     }
 
     _ = owm.client.LayerSurface.create(wlr_layer_surface) catch {

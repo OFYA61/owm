@@ -31,7 +31,7 @@ request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
 pub fn create(xdg_toplevel_window: *window.Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
-    const scene_tree = owm.server.scene_tree_apps.createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
+    const scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         log.err("Failed to create scene tree for XdgToplevel");
         return client.Error.FailedToCreateSceneTree;
     };

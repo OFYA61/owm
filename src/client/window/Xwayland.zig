@@ -119,7 +119,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
 
-    xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
+    xwayland.wlr_scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
         log.err("XWayland: Failed to create subsurface");
         return;
     };

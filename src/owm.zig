@@ -12,6 +12,7 @@ pub const client = @import("client/client.zig");
 
 pub const Keyboard = @import("Keyboard.zig");
 pub const Output = @import("Output.zig");
+pub const Scene = @import("Scene.zig");
 
 /// Wayland server instance
 pub var server: @import("Server.zig") = undefined;
