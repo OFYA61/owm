@@ -69,13 +69,11 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland_override.commit_listener);
 
-    if (xwayland_override.wlr_xwayland_surface.override_redirect) {
-        xwayland_override.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
-            log.err("XWayland: Failed to create subsurface for menu");
-            return;
-        };
-        xwayland_override.wlr_scene_tree.?.node.raiseToTop();
-    }
+    xwayland_override.wlr_scene_tree = owm.server.scene.layers.override_redirect.createSceneSubsurfaceTree(surface) catch {
+        log.err("XWayland: Failed to create subsurface for menu");
+        return;
+    };
+    xwayland_override.wlr_scene_tree.?.node.raiseToTop();
     xwayland_override.wlr_xwayland_surface.activate(true);
     xwayland_override.wlr_scene_tree.?.node.setPosition(0, 0);
 }

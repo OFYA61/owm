@@ -94,10 +94,10 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
     const layout_output = owm.server.wlr_output_layout.addAuto(wlr_output) catch {
         return Error.AddOutputLayout;
     };
-    const scene_output = owm.server.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
+    const scene_output = owm.server.scene.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
         return Error.CreateSceneOutput;
     };
-    owm.server.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+    owm.server.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
     const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
         std.mem.span(wlr_output.name),
@@ -275,7 +275,7 @@ fn recalculateWorkArea(self: *Output) void {
 
 /// Called every time when an output is ready to display a farme, generally at the refresh rate
 fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-    const scene_output = owm.server.wlr_scene.getSceneOutput(wlr_output).?;
+    const scene_output = owm.server.scene.wlr_scene.getSceneOutput(wlr_output).?;
     // Render the scene if needed and commit the output
     _ = scene_output.commit(null);
 

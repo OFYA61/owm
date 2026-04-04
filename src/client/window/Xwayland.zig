@@ -8,7 +8,7 @@ const wlr = @import("wlroots");
 const owm = @import("root").owm;
 const client = owm.client;
 const log = owm.log;
-const window = owm.client.window;
+const Window = owm.client.window.Window;
 
 wlr_xwayland_surface: *wlr.XwaylandSurface,
 current_output: *owm.Output,
@@ -119,23 +119,23 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
 
-    xwayland.wlr_scene_tree = owm.server.scene_tree_apps.createSceneSubsurfaceTree(surface) catch {
+    xwayland.wlr_scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
         log.err("XWayland: Failed to create subsurface");
         return;
     };
     xwayland.wlr_xwayland_surface.activate(true);
     xwayland.setPos(xwayland.wlr_scene_tree.?.node.x, xwayland.wlr_scene_tree.?.node.y);
 
-    const xwayland_window = window.Window.from(xwayland);
+    const xwayland_window = Window.from(xwayland);
     xwayland.wlr_scene_tree.?.node.data = xwayland_window;
-    owm.server.windows.prepend(xwayland_window);
+    owm.server.scene.addWindowToCurrentWorkspace(xwayland_window);
     owm.server.focusWindow(xwayland_window);
 }
 
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("unmap_listener", listener);
 
-    const xwayland_window = window.Window.from(xwayland);
+    const xwayland_window = Window.from(xwayland);
 
     xwayland.commit_listener.link.remove();
     xwayland_window.link.remove();
@@ -150,7 +150,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
 
 fn requestMoveCallback(listener: *wl.Listener(void)) void {
     const xwayland: *Self = @fieldParentPtr("request_move_listener", listener);
-    const xwayland_window = window.Window.from(xwayland);
+    const xwayland_window = Window.from(xwayland);
 
     if (xwayland.wlr_xwayland_surface.surface == null or !xwayland.wlr_xwayland_surface.surface.?.mapped) {
         return;
@@ -168,7 +168,7 @@ fn requestMoveCallback(listener: *wl.Listener(void)) void {
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resize), event: *wlr.XwaylandSurface.event.Resize) void {
     const xwayland: *Self = @fieldParentPtr("request_resize_listener", listener);
-    const xwayland_window = window.Window.from(xwayland);
+    const xwayland_window = Window.from(xwayland);
 
     if (xwayland.wlr_xwayland_surface.surface == null or !xwayland.wlr_xwayland_surface.surface.?.mapped) {
         return;
@@ -207,5 +207,11 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     xwayland.request_resize_listener.link.remove();
     xwayland.destroy_listener.link.remove();
 
-    owm.c_alloc.destroy(window.Window.from(xwayland));
+    const xwayland_window = Window.from(xwayland);
+    if (owm.server.focused_window == xwayland_window) {
+        owm.server.focused_window = null;
+        owm.server.focusTopWindow();
+    }
+
+    owm.c_alloc.destroy(xwayland_window);
 }
