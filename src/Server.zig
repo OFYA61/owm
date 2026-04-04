@@ -32,7 +32,6 @@ xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylan
 
 wlr_xdg_shell: *wlr.XdgShell,
 new_xdg_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
-new_xdg_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopupCallback),
 
 wlr_seat: *wlr.Seat,
 focused_window: ?*owm.client.window.Window = null,
@@ -99,7 +98,6 @@ pub fn init(self: *Server) anyerror!void {
     self.wlr_backend.events.new_output.add(&self.new_output_listener);
 
     self.wlr_xdg_shell.events.new_toplevel.add(&self.new_xdg_toplevel_listener);
-    self.wlr_xdg_shell.events.new_popup.add(&self.new_xdg_popup_listener);
 
     self.wlr_backend.events.new_input.add(&self.new_input_listener);
     self.wlr_seat.events.request_set_cursor.add(&self.request_set_cursor_listener);
@@ -129,7 +127,6 @@ pub fn deinit(self: *Server) void {
     self.new_output_listener.link.remove();
 
     self.new_xdg_toplevel_listener.link.remove();
-    self.new_xdg_popup_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();
     self.cursor_motion_listener.link.remove();
@@ -428,16 +425,6 @@ fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *
         wlr_xdg_toplevel.sendClose();
         return;
     };
-}
-
-fn newXdgPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
-    const server: *Server = @fieldParentPtr("new_xdg_popup_listener", listener);
-    if (server.outputAtCursor()) |output| {
-        _ = owm.client.Popup.create(wlr_xdg_popup, server.scene.layers.popups, server.scene.layers.popups, output) catch |err| {
-            log.errf("Failed to create XDG Popup {}", .{err});
-            return;
-        };
-    }
 }
 
 /// Called when a new input device becomes available
