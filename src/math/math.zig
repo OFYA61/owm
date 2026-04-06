@@ -29,14 +29,14 @@ pub fn Vec2(comptime T: type) type {
     };
 }
 
-pub fn verifyInt(comptime T: type) void {
+fn verifyInt(comptime T: type) void {
     switch (@typeInfo(T)) {
         .int, .comptime_int => {},
         else => @compileError("Expected a integer type"),
     }
 }
 
-pub fn verifyFloat(comptime T: type) void {
+fn verifyFloat(comptime T: type) void {
     switch (@typeInfo(T)) {
         .float, .comptime_float => {},
         else => @compileError("Expected a float type"),
