@@ -117,6 +117,17 @@ pub const Window = struct {
         }
     }
 
+    pub fn getPos(self: *Self) owm.math.Vec2(i32) {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                return t.getPos();
+            },
+            .xwayland => |*xw| {
+                return xw.getPos();
+            },
+        }
+    }
+
     pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
         switch (self.window) {
             .xdg_toplevel => |*t| {
