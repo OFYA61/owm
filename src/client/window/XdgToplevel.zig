@@ -196,7 +196,6 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
-        // var p = owm.server.seat.getCursorPos();
         const cursor_pos = owm.server.seat.getCursorPos().intoInt(c_int);
         const new_x = cursor_pos.x - @divFloor(box.width, 2);
         const new_y = cursor_pos.y - 3;
