@@ -33,7 +33,7 @@ pub fn create(device: *wlr.InputDevice) anyerror!*Keyboard {
     wlr_keyboard.events.key.add(&keyboard.key_listener);
     device.events.destroy.add(&keyboard.destroy_listener);
 
-    owm.server.wlr_seat.setKeyboard(wlr_keyboard);
+    owm.server.seat.wlr_seat.setKeyboard(wlr_keyboard);
 
     return keyboard;
 }
@@ -47,8 +47,8 @@ pub fn deinit(self: *Keyboard) void {
 }
 
 fn modifiersCallback(_: *wl.Listener(*wlr.Keyboard), wlr_keyboard: *wlr.Keyboard) void {
-    owm.server.wlr_seat.setKeyboard(wlr_keyboard);
-    owm.server.wlr_seat.keyboardNotifyModifiers(&wlr_keyboard.modifiers);
+    owm.server.seat.wlr_seat.setKeyboard(wlr_keyboard);
+    owm.server.seat.wlr_seat.keyboardNotifyModifiers(&wlr_keyboard.modifiers);
 }
 
 fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
@@ -69,8 +69,8 @@ fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyb
     }
 
     if (!handled) {
-        owm.server.wlr_seat.setKeyboard(wlr_keyboard);
-        owm.server.wlr_seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+        owm.server.seat.wlr_seat.setKeyboard(wlr_keyboard);
+        owm.server.seat.wlr_seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 }
 

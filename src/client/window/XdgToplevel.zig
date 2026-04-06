@@ -80,6 +80,13 @@ pub fn setFocus(self: *Self, focus: bool) void {
     }
 }
 
+pub inline fn getPos(self: *Self) owm.math.Vec2(i32) {
+    return .{
+        .x = self.x,
+        .y = self.y,
+    };
+}
+
 pub fn setPos(self: *Self, new_x: i32, new_y: i32) void {
     self.x = new_x;
     self.y = new_y;
@@ -138,15 +145,15 @@ fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
     owm.server.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
-    owm.server.focusWindow(xdg_toplevel_window);
+    owm.server.seat.focusWindow(xdg_toplevel_window);
 }
 
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("unmap_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    if (owm.server.grabbed_window == xdg_toplevel_window) {
-        owm.server.resetCursorMode();
+    if (owm.server.seat.grabbed_window == xdg_toplevel_window) {
+        owm.server.seat.resetCursorMode();
     }
     xdg_toplevel_window.link.remove();
 }
@@ -160,9 +167,6 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
         // Configuring the xdg_toplevel with 0,0 size to lets the window pick the
         // dimensions itself.
         _ = toplevel.wlr_xdg_toplevel.setSize(SPAWN_SIZE_X, SPAWN_SIZE_Y);
-    }
-    if (owm.server.cursor_mode != .resize) {
-        return;
     }
 }
 
@@ -180,10 +184,7 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel.request_fullscreen_listener.link.remove();
 
     const xdg_toplevel_window = Window.from(toplevel);
-    if (owm.server.focused_window == xdg_toplevel_window) {
-        owm.server.focused_window = null;
-        owm.server.focusTopWindow();
-    }
+    owm.server.seat.clearFocusIfFocusedWindow(xdg_toplevel_window);
 
     owm.c_alloc.destroy(xdg_toplevel_window);
 }
@@ -195,35 +196,20 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
-        const new_x = @as(c_int, @intFromFloat(owm.server.wlr_cursor.x)) - @divFloor(box.width, 2);
-        const new_y = @as(c_int, @intFromFloat(owm.server.wlr_cursor.y)) - 3;
+        // var p = owm.server.seat.getCursorPos();
+        const cursor_pos = owm.server.seat.getCursorPos().intoInt(c_int);
+        const new_x = cursor_pos.x - @divFloor(box.width, 2);
+        const new_y = cursor_pos.y - 3;
         toplevel.setPos(new_x, new_y);
     }
 
-    owm.server.grabbed_window = xdg_toplevel_window;
-    owm.server.cursor_mode = .move;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(toplevel.x));
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(toplevel.y));
+    owm.server.seat.requestMove(xdg_toplevel_window);
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Self = @fieldParentPtr("request_resize_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-
-    owm.server.grabbed_window = xdg_toplevel_window;
-    owm.server.cursor_mode = .resize;
-    owm.server.resize_edges = event.edges;
-
-    const box = toplevel.wlr_xdg_toplevel.base.geometry;
-
-    const border_x = toplevel.x + box.x + if (event.edges.right) box.width else 0;
-    const border_y = toplevel.y + box.y + if (event.edges.bottom) box.height else 0;
-    owm.server.grab_x = owm.server.wlr_cursor.x - @as(f64, @floatFromInt(border_x)); // Delta X between cursor X and grabbed borders X
-    owm.server.grab_y = owm.server.wlr_cursor.y - @as(f64, @floatFromInt(border_y)); // Delta Y between cursor Y and grabbed borders Y
-
-    owm.server.grab_box = box;
-    owm.server.grab_box.x += toplevel.x;
-    owm.server.grab_box.y += toplevel.y;
+    owm.server.seat.requestResize(xdg_toplevel_window, event.edges);
 }
 
 fn requestMaximizeCallback(listener: *wl.Listener(void)) void {
