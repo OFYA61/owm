@@ -11,7 +11,7 @@ const log = owm.log;
 const Window = owm.client.window.Window;
 
 wlr_xwayland_surface: *wlr.XwaylandSurface,
-current_output: *owm.Output,
+current_output: *owm.server.Output,
 wlr_scene_tree: ?*wlr.SceneTree = null,
 x: i32 = 0,
 y: i32 = 0,

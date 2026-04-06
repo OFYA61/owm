@@ -14,7 +14,7 @@ pub const SPAWN_SIZE_X = 640;
 pub const SPAWN_SIZE_Y = 360;
 
 wlr_xdg_toplevel: *wlr.XdgToplevel,
-current_output: *owm.Output,
+current_output: *owm.server.Output,
 box_before_maximize: wlr.Box,
 wlr_scene_tree: *wlr.SceneTree,
 x: i32 = 0,

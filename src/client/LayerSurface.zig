@@ -11,7 +11,7 @@ const log = owm.log;
 
 wlr_layer_surface: *wlr.LayerSurfaceV1,
 wlr_scene_layer_surface: *wlr.SceneLayerSurfaceV1,
-current_output: *owm.Output,
+current_output: *owm.server.Output,
 x: c_int,
 y: c_int,
 
@@ -33,7 +33,7 @@ pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) client.Error!*Self {
     self.* = .{
         .wlr_layer_surface = wlr_layer_surface,
         .wlr_scene_layer_surface = scene_tree,
-        .current_output = owm.Output.fromOpaquePtr(wlr_layer_surface.output.?.data) orelse return client.Error.FailedToDetermineOutout,
+        .current_output = owm.server.Output.fromOpaquePtr(wlr_layer_surface.output.?.data) orelse return client.Error.FailedToDetermineOutout,
         .x = scene_tree.tree.node.x,
         .y = scene_tree.tree.node.y,
     };
@@ -83,7 +83,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
         }
         const exclusive_zone_size: u32 = @intCast(zone_size);
         const exclusive_zone_size_c_int: c_int = @intCast(zone_size);
-        var zone_type: owm.Output.ExclusiveZone.Type = undefined;
+        var zone_type: owm.server.Output.ExclusiveZone.Type = undefined;
         if (anchors.top and anchors.right and !anchors.bottom and anchors.left) {
             zone_type = .Top;
             layer_surface.setPos(work_area.x, work_area.y);
@@ -107,7 +107,7 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surfac
             return;
         }
 
-        const exclusive_zone = owm.Output.ExclusiveZone{
+        const exclusive_zone = owm.server.Output.ExclusiveZone{
             .type = zone_type,
             .size = exclusive_zone_size,
             .owner = layer_surface,
