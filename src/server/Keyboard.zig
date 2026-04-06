@@ -6,7 +6,7 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
-const owm = @import("owm.zig");
+const owm = @import("root").owm;
 
 wlr_device: *wlr.InputDevice,
 

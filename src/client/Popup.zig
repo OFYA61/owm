@@ -10,14 +10,14 @@ const log = owm.log;
 wlr_xdg_popup: *wlr.XdgPopup,
 root_scene_tree: *wlr.SceneTree,
 scene_tree: *wlr.SceneTree,
-output: *owm.Output,
+output: *owm.server.Output,
 
 commit_listener: wl.Listener(*wlr.Surface) = .init(commitCallback),
 reposition_listener: wl.Listener(void) = .init(repositionCallback),
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
-pub fn create(wlr_xdg_popup: *wlr.XdgPopup, root_scene_tree: *wlr.SceneTree, parent_scene_tree: *wlr.SceneTree, parent_output: *owm.Output) client.Error!*Self {
+pub fn create(wlr_xdg_popup: *wlr.XdgPopup, root_scene_tree: *wlr.SceneTree, parent_scene_tree: *wlr.SceneTree, parent_output: *owm.server.Output) client.Error!*Self {
     var self = try owm.c_alloc.create(Self);
     errdefer owm.c_alloc.destroy(self);
 

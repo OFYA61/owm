@@ -1,4 +1,4 @@
-pub const Server = @This();
+const Self = @This();
 
 const std = @import("std");
 
@@ -6,20 +6,24 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
-const owm = @import("owm.zig");
+const owm = @import("root").owm;
 const log = owm.log;
+
+const Output = @import("Output.zig");
+const Scene = @import("Scene.zig");
+const Seat = @import("Seat.zig");
 
 wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
 
-scene: owm.Scene,
-seat: owm.Seat,
+scene: Scene,
+seat: Seat,
 
 wlr_backend: *wlr.Backend,
 wlr_allocator: *wlr.Allocator,
 wlr_renderer: *wlr.Renderer,
 wlr_output_layout: *wlr.OutputLayout,
-outputs: wl.list.Head(owm.Output, .link) = undefined,
+outputs: wl.list.Head(Output, .link) = undefined,
 new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
@@ -31,7 +35,7 @@ xwayland_new_surface_listener: wl.Listener(*wlr.XwaylandSurface) = .init(xwaylan
 wlr_xdg_shell: *wlr.XdgShell,
 new_xdg_toplevel_listener: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevelCallback),
 
-pub fn init(self: *Server) anyerror!void {
+pub fn init(self: *Self) anyerror!void {
     wlr.log.init(.err, null);
 
     const wl_server = try wl.Server.create();
@@ -56,8 +60,8 @@ pub fn init(self: *Server) anyerror!void {
         .wlr_renderer = wlr_renderer,
         .wlr_allocator = wlr_allocator,
         .wlr_output_layout = wlr_output_layout,
-        .scene = try owm.Scene.create(wlr_output_layout),
-        .seat = try owm.Seat.create(wl_server),
+        .scene = try Scene.create(wlr_output_layout),
+        .seat = try Seat.create(wl_server),
         .wlr_layer_shell_v1 = wlr_layer_shell_v1,
         .wlr_xdg_shell = wlr_xdg_shell,
         .wlr_xwayland = wlr_xwayland,
@@ -79,7 +83,7 @@ pub fn init(self: *Server) anyerror!void {
     wlr_xwayland.events.new_surface.add(&self.xwayland_new_surface_listener);
 }
 
-pub fn deinit(self: *Server) void {
+pub fn deinit(self: *Self) void {
     self.wl_server.destroyClients();
     self.xwayland_new_surface_listener.link.remove();
     self.new_layer_surface_listener.link.remove();
@@ -91,7 +95,7 @@ pub fn deinit(self: *Server) void {
     self.wl_server.destroy();
 }
 
-pub fn run(self: *Server) anyerror!void {
+pub fn run(self: *Self) anyerror!void {
     try self.wlr_backend.start();
     log.infof(
         "Running OWM compositor on WAYLAND_DISPLAY='{s}' and Xwayland DISLPAY='{s}'",
@@ -103,7 +107,7 @@ pub fn run(self: *Server) anyerror!void {
     self.wl_server.run();
 }
 
-pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
+pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
     switch (@intFromEnum(key)) {
         xkb.Keysym.Escape => {
             self.wl_server.terminate();
@@ -142,7 +146,7 @@ pub fn handleKeybind(self: *Server, key: xkb.Keysym) bool {
     return true;
 }
 
-fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
+fn spawnChild(self: *Self, command: [:0]const u8) anyerror!void {
     var child = std.process.Child.init(
         &[_][]const u8{ "/bin/sh", "-c", command },
         owm.c_alloc,
@@ -157,7 +161,7 @@ fn spawnChild(self: *Server, command: [:0]const u8) anyerror!void {
     try child.spawn();
 }
 
-pub fn outputAtCursor(self: *Server) ?*owm.Output {
+pub fn outputAtCursor(self: *Self) ?*Output {
     const cursor_pos = self.seat.getCursorPos();
     const cx = cursor_pos.x;
     const cy = cursor_pos.y;
@@ -177,9 +181,9 @@ pub fn outputAtCursor(self: *Server) ?*owm.Output {
 
 /// Called when a new display is discovered
 fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-    const server: *Server = @fieldParentPtr("new_output_listener", listener);
+    const server: *Self = @fieldParentPtr("new_output_listener", listener);
 
-    const new_output = owm.Output.create(wlr_output) catch |err| {
+    const new_output = Output.create(wlr_output) catch |err| {
         log.errf("Failed to allocate new output {}", .{err});
         wlr_output.destroy();
         return;
@@ -189,7 +193,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         return;
     }
 
-    var outputs: std.ArrayList(*owm.Output) = .empty;
+    var outputs: std.ArrayList(*Output) = .empty;
     var output_iter = server.outputs.iterator(.forward);
     while (output_iter.next()) |it| {
         outputs.append(owm.alloc, it) catch unreachable;
@@ -199,7 +203,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         log.info("Output arrangement found, setting up displays according to it");
 
         for (arrangement.displays.items) |*display| {
-            var output_to_modify: ?*owm.Output = null;
+            var output_to_modify: ?*Output = null;
             for (outputs.items) |output| {
                 if (std.mem.eql(u8, output.id, display.id)) {
                     output_to_modify = output;
@@ -222,7 +226,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
             output_to_modify.?.setModeAndPos(
                 display.x,
                 display.y,
-                owm.Output.Mode{
+                Output.Mode{
                     .width = display.width,
                     .height = display.height,
                     .refresh = display.refresh,

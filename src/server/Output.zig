@@ -8,7 +8,8 @@ const posix = @import("std").posix;
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 
-const owm = @import("owm.zig");
+const owm = @import("root").owm;
+const log = owm.log;
 
 id: []u8,
 wlr_output: *wlr.Output,
@@ -54,7 +55,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
     errdefer owm.c_alloc.destroy(output);
 
     if (!wlr_output.initRender(owm.SERVER.wlr_allocator, owm.SERVER.wlr_renderer)) {
-        owm.log.err("Failed to initialize render with allocator and renderer on new output");
+        log.err("Failed to initialize render with allocator and renderer on new output");
         return Error.InitRenderer;
     }
 
@@ -63,9 +64,9 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
     state.setEnabled(true);
     if (!wlr_output.modes.empty()) {
         var modes_iterator = wlr_output.modes.iterator(.forward);
-        owm.log.info("The output has the following modes:");
+        log.info("The output has the following modes:");
         while (modes_iterator.next()) |mode| {
-            owm.log.infof(
+            log.infof(
                 "\t- {}x{} {}Hz",
                 .{
                     mode.width,
@@ -76,7 +77,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         }
     }
     if (wlr_output.preferredMode()) |mode| {
-        owm.log.infof(
+        log.infof(
             "Output has the preferred mode {}x{} {}Hz",
             .{
                 mode.width,
@@ -87,7 +88,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         state.setMode(mode);
     }
     if (!wlr_output.commitState(&state)) {
-        owm.log.err("Failed to commit state for new output");
+        log.err("Failed to commit state for new output");
         return Error.CommitState;
     }
 
@@ -137,7 +138,7 @@ pub fn disableOutput(self: *Output) Error!void {
     defer state.finish();
     state.setEnabled(false);
     if (!self.wlr_output.commitState(&state)) {
-        owm.log.errf("Failed to commit state for output {s}", .{self.id});
+        log.errf("Failed to commit state for output {s}", .{self.id});
         return Error.CommitState;
     }
     owm.SERVER.wlr_output_layout.remove(self.wlr_output);
@@ -160,12 +161,12 @@ pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Erro
         }
     }
     if (mode == null) {
-        owm.log.errf("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh });
+        log.errf("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh });
         return Error.ModeDoesNotExist;
     }
     state.setMode(mode.?);
     if (!self.wlr_output.commitState(&state)) {
-        owm.log.errf("Failed to commit state for output {s}", .{self.id});
+        log.errf("Failed to commit state for output {s}", .{self.id});
         return Error.CommitState;
     }
 
@@ -193,7 +194,7 @@ pub fn isDisplay(self: *Output) bool {
 }
 
 pub fn addExclusiveZone(self: *Output, exclusive_zone: ExclusiveZone) error{OutOfMemory}!void {
-    owm.log.infof("Output {s}: Adding exclusive zone {} {}", .{ self.id, exclusive_zone.type, exclusive_zone.size });
+    log.infof("Output {s}: Adding exclusive zone {} {}", .{ self.id, exclusive_zone.type, exclusive_zone.size });
     try self.exclusive_zones.append(owm.alloc, exclusive_zone);
     self.recalculateWorkArea();
 }
@@ -270,7 +271,7 @@ fn recalculateWorkArea(self: *Output) void {
 
     self.work_area = new_work_area;
 
-    owm.log.infof("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
+    log.infof("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
 }
 
 /// Called every time when an output is ready to display a farme, generally at the refresh rate

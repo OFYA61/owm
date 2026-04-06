@@ -10,14 +10,10 @@ pub const client = @import("client/client.zig");
 pub const config = @import("config/config.zig");
 pub const log = @import("log/log.zig");
 pub const math = @import("math/math.zig");
-
-pub const Keyboard = @import("Keyboard.zig");
-pub const Output = @import("Output.zig");
-pub const Scene = @import("Scene.zig");
-pub const Seat = @import("Seat.zig");
+pub const server = @import("server/server.zig");
 
 /// Wayland server instance
-pub var SERVER: @import("Server.zig") = undefined;
+pub var SERVER: server.Server = undefined;
 
 pub fn init() anyerror!void {
     try log.init();

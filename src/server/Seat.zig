@@ -8,6 +8,8 @@ const log = owm.log;
 const math = owm.math;
 const Window = owm.client.window.Window;
 
+const Keyboard = @import("Keyboard.zig");
+
 const MIN_CLIENT_WIDTH = 240;
 const MIN_CLIENT_HEIGHT = 135;
 
@@ -213,7 +215,7 @@ fn newInputCallback(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr
             self.wlr_cursor.attachInputDevice(input_device);
         },
         .keyboard => {
-            _ = owm.Keyboard.create(input_device) catch |err| {
+            _ = Keyboard.create(input_device) catch |err| {
                 log.errf("Failed to allocate keyboard: {}", .{err});
                 return;
             };

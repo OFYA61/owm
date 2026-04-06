@@ -153,7 +153,7 @@ pub const Window = struct {
         }
     }
 
-    pub fn setCurrentOutput(self: *Self, output: *owm.Output) void {
+    pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
         switch (self.window) {
             .xdg_toplevel => |*t| {
                 t.current_output = output;

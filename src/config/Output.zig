@@ -58,7 +58,7 @@ pub const OutputConfig = struct {
         return OutputConfig{ .arrangements = .empty };
     }
 
-    pub fn findArrangementForOutputs(self: *OutputConfig, outputs: *std.ArrayList(*owm.Output)) ?Arrangement {
+    pub fn findArrangementForOutputs(self: *OutputConfig, outputs: *std.ArrayList(*owm.server.Output)) ?Arrangement {
         for (self.arrangements.items) |arrangement| {
             if (arrangement.displays.items.len != outputs.items.len) {
                 continue;
