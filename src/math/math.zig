@@ -10,11 +10,8 @@ pub fn Vec2(comptime T: type) type {
         y: T,
 
         pub fn intoInt(self: *const Self, comptime NT: type) Vec2(NT) {
-            switch (@typeInfo(T)) {
-                .float, .comptime_float => {},
-                else => @compileError("Cannot call this method on non-float vectors"),
-            }
-
+            verifyFloat(T);
+            verifyInt(NT);
             return .{
                 .x = @as(NT, @intFromFloat(self.x)),
                 .y = @as(NT, @intFromFloat(self.y)),
@@ -22,15 +19,26 @@ pub fn Vec2(comptime T: type) type {
         }
 
         pub fn intoFloat(self: *const Self, comptime NT: type) Vec2(NT) {
-            switch (@typeInfo(T)) {
-                .int, .comptime_int => {},
-                else => @compileError("Cannot call this method on non-int vectors"),
-            }
-
+            verifyInt(T);
+            verifyFloat(NT);
             return .{
                 .x = @as(NT, @floatFromInt(self.x)),
                 .y = @as(NT, @floatFromInt(self.y)),
             };
         }
     };
+}
+
+pub fn verifyInt(comptime T: type) void {
+    switch (@typeInfo(T)) {
+        .int, .comptime_int => {},
+        else => @compileError("Expected a integer type"),
+    }
+}
+
+pub fn verifyFloat(comptime T: type) void {
+    switch (@typeInfo(T)) {
+        .float, .comptime_float => {},
+        else => @compileError("Expected a float type"),
+    }
 }
