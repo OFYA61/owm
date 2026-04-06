@@ -31,13 +31,13 @@ request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
 pub fn create(xdg_toplevel_window: *Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
-    const scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
+    const scene_tree = owm.SERVER.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         log.err("Failed to create scene tree for XdgToplevel");
         return client.Error.FailedToCreateSceneTree;
     };
     errdefer scene_tree.node.link.remove();
     scene_tree.node.data = xdg_toplevel_window;
-    const output = owm.server.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
+    const output = owm.SERVER.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
 
     return .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,
@@ -76,7 +76,7 @@ pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
         self.wlr_scene_tree.node.raiseToTop();
-        owm.server.scene.raiseWindowToTopOfWorkspace(Window.from(self));
+        owm.SERVER.scene.raiseWindowToTopOfWorkspace(Window.from(self));
     }
 }
 
@@ -144,16 +144,16 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    owm.server.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
-    owm.server.seat.focusWindow(xdg_toplevel_window);
+    owm.SERVER.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
+    owm.SERVER.seat.focusWindow(xdg_toplevel_window);
 }
 
 /// Called when the surface should no longer be shown
 fn unmapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("unmap_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    if (owm.server.seat.grabbed_window == xdg_toplevel_window) {
-        owm.server.seat.resetCursorMode();
+    if (owm.SERVER.seat.grabbed_window == xdg_toplevel_window) {
+        owm.SERVER.seat.resetCursorMode();
     }
     xdg_toplevel_window.link.remove();
 }
@@ -184,7 +184,7 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     toplevel.request_fullscreen_listener.link.remove();
 
     const xdg_toplevel_window = Window.from(toplevel);
-    owm.server.seat.clearFocusIfFocusedWindow(xdg_toplevel_window);
+    owm.SERVER.seat.clearFocusIfFocusedWindow(xdg_toplevel_window);
 
     owm.c_alloc.destroy(xdg_toplevel_window);
 }
@@ -196,19 +196,19 @@ fn requestMoveCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Move), _: *
         const box = toplevel.box_before_maximize;
         toplevel.setSize(box.width, box.height);
         _ = toplevel.wlr_xdg_toplevel.setMaximized(false);
-        const cursor_pos = owm.server.seat.getCursorPos().intoInt(c_int);
+        const cursor_pos = owm.SERVER.seat.getCursorPos().intoInt(c_int);
         const new_x = cursor_pos.x - @divFloor(box.width, 2);
         const new_y = cursor_pos.y - 3;
         toplevel.setPos(new_x, new_y);
     }
 
-    owm.server.seat.requestMove(xdg_toplevel_window);
+    owm.SERVER.seat.requestMove(xdg_toplevel_window);
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XdgToplevel.event.Resize), event: *wlr.XdgToplevel.event.Resize) void {
     const toplevel: *Self = @fieldParentPtr("request_resize_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    owm.server.seat.requestResize(xdg_toplevel_window, event.edges);
+    owm.SERVER.seat.requestResize(xdg_toplevel_window, event.edges);
 }
 
 fn requestMaximizeCallback(listener: *wl.Listener(void)) void {

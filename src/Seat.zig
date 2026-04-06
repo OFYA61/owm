@@ -81,7 +81,7 @@ pub fn resetCursorMode(self: *Self) void {
 }
 
 pub fn focusTopWindow(self: *Self) void {
-    if (owm.server.scene.getTopWindowInWorkspace()) |top_window| {
+    if (owm.SERVER.scene.getTopWindowInWorkspace()) |top_window| {
         self.focusWindow(top_window);
     }
 }
@@ -191,7 +191,7 @@ fn processCursorMotion(self: *Self, time: u32) void {
         return;
     }
 
-    if (owm.server.scene.surfaceAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
+    if (owm.SERVER.scene.surfaceAt(self.wlr_cursor.x, self.wlr_cursor.y)) |response| {
         self.wlr_seat.pointerNotifyEnter(response.wlr_surface, response.sx, response.sy);
         self.wlr_seat.pointerNotifyMotion(time, response.sx, response.sy);
     } else {
@@ -257,13 +257,13 @@ fn cursorButtonCallback(listener: *wl.Listener(*wlr.Pointer.event.Button), event
     _ = self.wlr_seat.pointerNotifyButton(event.time_msec, event.button, event.state);
     if (event.state == .released) {
         if (self.grabbed_window) |grabbed_window| {
-            if (owm.server.outputAtCursor()) |output| {
+            if (owm.SERVER.outputAtCursor()) |output| {
                 grabbed_window.setCurrentOutput(output);
             }
         }
         self.resetCursorMode();
     } else {
-        if (owm.server.scene.windowAt(self.wlr_cursor.x, self.wlr_cursor.y)) |result| {
+        if (owm.SERVER.scene.windowAt(self.wlr_cursor.x, self.wlr_cursor.y)) |result| {
             self.focusWindow(result.window);
         } else if (self.focused_window) |window| {
             window.setFocus(false);

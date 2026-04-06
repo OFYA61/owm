@@ -161,7 +161,7 @@ pub fn outputAtCursor(self: *Server) ?*owm.Output {
     const cursor_pos = self.seat.getCursorPos();
     const cx = cursor_pos.x;
     const cy = cursor_pos.y;
-    var output_iterator = owm.server.outputs.iterator(.forward);
+    var output_iterator = owm.SERVER.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
         const area = output.area;
         const x = @as(f64, @floatFromInt(area.x));
@@ -287,7 +287,7 @@ fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *
 
 fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
     if (wlr_layer_surface.output == null) {
-        wlr_layer_surface.output = owm.server.outputs.first().?.wlr_output;
+        wlr_layer_surface.output = owm.SERVER.outputs.first().?.wlr_output;
     }
 
     if (wlr_layer_surface.current.layer != .bottom) {

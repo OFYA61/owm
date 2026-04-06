@@ -17,20 +17,20 @@ pub const Scene = @import("Scene.zig");
 pub const Seat = @import("Seat.zig");
 
 /// Wayland server instance
-pub var server: @import("Server.zig") = undefined;
+pub var SERVER: @import("Server.zig") = undefined;
 
 pub fn init() anyerror!void {
     try log.init();
     try config.init();
-    try server.init();
+    try SERVER.init();
 }
 
 pub fn run() anyerror!void {
-    return server.run();
+    return SERVER.run();
 }
 
 pub fn deinit() void {
-    server.deinit();
+    SERVER.deinit();
     config.deinit();
     log.deinit();
 }

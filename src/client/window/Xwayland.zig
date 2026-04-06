@@ -27,7 +27,7 @@ dissociate_listener: wl.Listener(void) = .init(dissociateCallback),
 destroy_listener: wl.Listener(void) = .init(destroyCallback),
 
 pub fn create(wlr_xwayland_surface: *wlr.XwaylandSurface) owm.client.Error!Self {
-    const output = owm.server.outputAtCursor() orelse return owm.client.Error.CursorNotOnOutput;
+    const output = owm.SERVER.outputAtCursor() orelse return owm.client.Error.CursorNotOnOutput;
 
     return .{
         .wlr_xwayland_surface = wlr_xwayland_surface,
@@ -126,7 +126,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
 
-    xwayland.wlr_scene_tree = owm.server.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
+    xwayland.wlr_scene_tree = owm.SERVER.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
         log.err("XWayland: Failed to create subsurface");
         return;
     };
@@ -135,8 +135,8 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     const xwayland_window = Window.from(xwayland);
     xwayland.wlr_scene_tree.?.node.data = xwayland_window;
-    owm.server.scene.addWindowToCurrentWorkspace(xwayland_window);
-    owm.server.seat.focusWindow(xwayland_window);
+    owm.SERVER.scene.addWindowToCurrentWorkspace(xwayland_window);
+    owm.SERVER.seat.focusWindow(xwayland_window);
 }
 
 fn unmapCallback(listener: *wl.Listener(void)) void {
@@ -167,7 +167,7 @@ fn requestMoveCallback(listener: *wl.Listener(void)) void {
     // 1. Unmaximize
     // 2. Set to previous position
 
-    owm.server.seat.requestMove(xwayland_window);
+    owm.SERVER.seat.requestMove(xwayland_window);
 }
 
 fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resize), event: *wlr.XwaylandSurface.event.Resize) void {
@@ -179,7 +179,7 @@ fn requestResizeCallback(listener: *wl.Listener(*wlr.XwaylandSurface.event.Resiz
     }
 
     const edges: wlr.Edges = @bitCast(event.edges);
-    owm.server.seat.requestResize(xwayland_window, edges);
+    owm.SERVER.seat.requestResize(xwayland_window, edges);
 }
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
@@ -193,7 +193,7 @@ fn destroyCallback(listener: *wl.Listener(void)) void {
     xwayland.destroy_listener.link.remove();
 
     const xwayland_window = Window.from(xwayland);
-    owm.server.seat.clearFocusIfFocusedWindow(xwayland_window);
+    owm.SERVER.seat.clearFocusIfFocusedWindow(xwayland_window);
 
     owm.c_alloc.destroy(xwayland_window);
 }

@@ -53,7 +53,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
     const output = try owm.c_alloc.create(Output);
     errdefer owm.c_alloc.destroy(output);
 
-    if (!wlr_output.initRender(owm.server.wlr_allocator, owm.server.wlr_renderer)) {
+    if (!wlr_output.initRender(owm.SERVER.wlr_allocator, owm.SERVER.wlr_renderer)) {
         owm.log.err("Failed to initialize render with allocator and renderer on new output");
         return Error.InitRenderer;
     }
@@ -91,13 +91,13 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         return Error.CommitState;
     }
 
-    const layout_output = owm.server.wlr_output_layout.addAuto(wlr_output) catch {
+    const layout_output = owm.SERVER.wlr_output_layout.addAuto(wlr_output) catch {
         return Error.AddOutputLayout;
     };
-    const scene_output = owm.server.scene.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
+    const scene_output = owm.SERVER.scene.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
         return Error.CreateSceneOutput;
     };
-    owm.server.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
+    owm.SERVER.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
     const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
         std.mem.span(wlr_output.name),
@@ -127,7 +127,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
     wlr_output.events.request_state.add(&output.request_state_listener);
     wlr_output.events.destroy.add(&output.destroy_listener);
 
-    owm.server.outputs.append(output);
+    owm.SERVER.outputs.append(output);
 
     return output;
 }
@@ -140,7 +140,7 @@ pub fn disableOutput(self: *Output) Error!void {
         owm.log.errf("Failed to commit state for output {s}", .{self.id});
         return Error.CommitState;
     }
-    owm.server.wlr_output_layout.remove(self.wlr_output);
+    owm.SERVER.wlr_output_layout.remove(self.wlr_output);
 }
 
 pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -171,7 +171,7 @@ pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Erro
 
     const x = @as(c_int, new_x);
     const y = @as(c_int, new_y);
-    self.layout_output = owm.server.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
+    self.layout_output = owm.SERVER.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
     self.area = wlr.Box{
         .x = x,
         .y = y,
@@ -275,7 +275,7 @@ fn recalculateWorkArea(self: *Output) void {
 
 /// Called every time when an output is ready to display a farme, generally at the refresh rate
 fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-    const scene_output = owm.server.scene.wlr_scene.getSceneOutput(wlr_output).?;
+    const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(wlr_output).?;
     // Render the scene if needed and commit the output
     _ = scene_output.commit(null);
 
@@ -287,7 +287,7 @@ fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
 fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
     const output: *Output = @fieldParentPtr("request_state_listener", listener);
     _ = output.wlr_output.commitState(event.state);
-    if (owm.server.wlr_backend.isWl() or owm.server.wlr_backend.isX11()) {
+    if (owm.SERVER.wlr_backend.isWl() or owm.SERVER.wlr_backend.isX11()) {
         output.area = .{
             .x = 0,
             .y = 0,
@@ -315,6 +315,6 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     owm.c_alloc.destroy(output);
 
     if (should_terminate_server) {
-        owm.server.wl_server.terminate();
+        owm.SERVER.wl_server.terminate();
     }
 }
