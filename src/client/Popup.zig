@@ -45,8 +45,7 @@ fn unconstrain(self: *Self) void {
     var root_lx: c_int = undefined;
     var root_ly: c_int = undefined;
     _ = self.root_scene_tree.node.coords(&root_lx, &root_ly);
-    var box: wlr.Box = undefined;
-    owm.SERVER.wlr_output_layout.getBox(self.output.wlr_output, &box);
+    var box = owm.SERVER.output_manager.getOutputBox(self.output);
     box.x -= root_lx;
     box.y -= root_ly;
     self.wlr_xdg_popup.unconstrainFromBox(&box);
