@@ -1,6 +1,6 @@
 //! Represents a display output in the Wayland compositor.
 //! Manages output geometry, frame callbacks, state requests, and destruction events.
-pub const Output = @This();
+pub const Self = @This();
 
 const std = @import("std");
 const posix = @import("std").posix;
@@ -46,13 +46,13 @@ pub const Error = error{
     OutOfMemory,
 };
 
-pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Output {
-    return @as(*Output, @ptrCast(@alignCast(ptr)));
+pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Self {
+    return @as(*Self, @ptrCast(@alignCast(ptr)));
 }
 
-pub fn create(wlr_output: *wlr.Output) Error!*Output {
-    const output = try owm.c_alloc.create(Output);
-    errdefer owm.c_alloc.destroy(output);
+pub fn create(wlr_output: *wlr.Output) Error!*Self {
+    const self = try owm.c_alloc.create(Self);
+    errdefer owm.c_alloc.destroy(self);
 
     if (!wlr_output.initRender(owm.SERVER.wlr_allocator, owm.SERVER.wlr_renderer)) {
         log.err("Failed to initialize render with allocator and renderer on new output");
@@ -92,7 +92,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         return Error.CommitState;
     }
 
-    const layout_output = owm.SERVER.wlr_output_layout.addAuto(wlr_output) catch {
+    const layout_output = owm.SERVER.output_manager.wlr_output_layout.addAuto(wlr_output) catch {
         return Error.AddOutputLayout;
     };
     const scene_output = owm.SERVER.scene.wlr_scene.createSceneOutput(wlr_output) catch { // Add a viewport for the output to the scene graph.
@@ -113,7 +113,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         .height = wlr_output.height,
     };
 
-    output.* = .{
+    self.* = .{
         .id = id,
         .wlr_output = wlr_output,
         .area = area,
@@ -122,18 +122,16 @@ pub fn create(wlr_output: *wlr.Output) Error!*Output {
         .scene_output = scene_output,
     };
 
-    wlr_output.data = output;
+    wlr_output.data = self;
 
-    wlr_output.events.frame.add(&output.frame_listener);
-    wlr_output.events.request_state.add(&output.request_state_listener);
-    wlr_output.events.destroy.add(&output.destroy_listener);
+    wlr_output.events.frame.add(&self.frame_listener);
+    wlr_output.events.request_state.add(&self.request_state_listener);
+    wlr_output.events.destroy.add(&self.destroy_listener);
 
-    owm.SERVER.outputs.append(output);
-
-    return output;
+    return self;
 }
 
-pub fn disableOutput(self: *Output) Error!void {
+pub fn disableOutput(self: *Self) Error!void {
     var state = wlr.Output.State.init();
     defer state.finish();
     state.setEnabled(false);
@@ -141,10 +139,10 @@ pub fn disableOutput(self: *Output) Error!void {
         log.errf("Failed to commit state for output {s}", .{self.id});
         return Error.CommitState;
     }
-    owm.SERVER.wlr_output_layout.remove(self.wlr_output);
+    owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
 }
 
-pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
+pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
     var state = wlr.Output.State.init();
     defer state.finish();
     state.setEnabled(true);
@@ -172,7 +170,7 @@ pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Erro
 
     const x = @as(c_int, new_x);
     const y = @as(c_int, new_y);
-    self.layout_output = owm.SERVER.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
+    self.layout_output = owm.SERVER.output_manager.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
     self.area = wlr.Box{
         .x = x,
         .y = y,
@@ -182,24 +180,24 @@ pub fn setModeAndPos(self: *Output, new_x: i32, new_y: i32, new_mode: Mode) Erro
     self.recalculateWorkArea();
 }
 
-pub fn getRefresh(self: *Output) i32 {
+pub fn getRefresh(self: *Self) i32 {
     return @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(self.wlr_output.current_mode.?.refresh)) / 1000)));
 }
 
-pub fn isDisplay(self: *Output) bool {
+pub fn isDisplay(self: *Self) bool {
     if (self.wlr_output.current_mode) |_| {
         return true;
     }
     return false;
 }
 
-pub fn addExclusiveZone(self: *Output, exclusive_zone: ExclusiveZone) error{OutOfMemory}!void {
+pub fn addExclusiveZone(self: *Self, exclusive_zone: ExclusiveZone) error{OutOfMemory}!void {
     log.infof("Output {s}: Adding exclusive zone {} {}", .{ self.id, exclusive_zone.type, exclusive_zone.size });
     try self.exclusive_zones.append(owm.alloc, exclusive_zone);
     self.recalculateWorkArea();
 }
 
-pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.client.LayerSurface) void {
+pub fn removeExclusiveZoneByOwner(self: *Self, owner: *owm.client.LayerSurface) void {
     var index: ?usize = null;
     for (self.exclusive_zones.items, 0..) |*zone, i| {
         if (zone.owner == owner) {
@@ -248,7 +246,7 @@ pub fn removeExclusiveZoneByOwner(self: *Output, owner: *owm.client.LayerSurface
     }
 }
 
-fn recalculateWorkArea(self: *Output) void {
+fn recalculateWorkArea(self: *Self) void {
     var top: c_int = 0;
     var bottom: c_int = 0;
     var left: c_int = 0;
@@ -286,7 +284,7 @@ fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
 
 /// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
 fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
-    const output: *Output = @fieldParentPtr("request_state_listener", listener);
+    const output: *Self = @fieldParentPtr("request_state_listener", listener);
     _ = output.wlr_output.commitState(event.state);
     if (owm.SERVER.wlr_backend.isWl() or owm.SERVER.wlr_backend.isX11()) {
         output.area = .{
@@ -300,7 +298,7 @@ fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), 
 }
 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
-    const output: *Output = @fieldParentPtr("destroy_listener", listener);
+    const output: *Self = @fieldParentPtr("destroy_listener", listener);
 
     var should_terminate_server = true;
     if (output.isDisplay()) {

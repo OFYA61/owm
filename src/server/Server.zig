@@ -10,21 +10,20 @@ const owm = @import("root").owm;
 const log = owm.log;
 
 const Output = @import("Output.zig");
+const OutputManager = @import("OutputManager.zig");
 const Scene = @import("Scene.zig");
 const Seat = @import("Seat.zig");
 
 wl_server: *wl.Server,
 wl_socket: [11]u8 = undefined,
 
+output_manager: OutputManager,
 scene: Scene,
 seat: Seat,
 
 wlr_backend: *wlr.Backend,
 wlr_allocator: *wlr.Allocator,
 wlr_renderer: *wlr.Renderer,
-wlr_output_layout: *wlr.OutputLayout,
-outputs: wl.list.Head(Output, .link) = undefined,
-new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
@@ -44,24 +43,26 @@ pub fn init(self: *Self) anyerror!void {
     const wlr_backend = try wlr.Backend.autocreate(event_loop, null); // Auto picks the backend (Wayland, X11, DRM+KSM)
     const wlr_renderer = try wlr.Renderer.autocreate(wlr_backend); // Auto picks a renderer (Pixman, GLES2, Vulkan)
     const wlr_allocator = try wlr.Allocator.autocreate(wlr_backend, wlr_renderer); // The bridge between the backend and renderer. It handdles the buffer creeation, allowing wlroots to render onto the screen
-    const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
     const wlr_layer_shell_v1 = try wlr.LayerShellV1.create(wl_server, 5); // Protocol for status bars
     const wlr_xdg_shell = try wlr.XdgShell.create(wl_server, 3); // XDG protocol for app windows
 
     const wlr_compositor = try wlr.Compositor.create(wl_server, 6, wlr_renderer); // Allows clients to allocate surfaces
     _ = try wlr.Subcompositor.create(wl_server); // Allows clients to assign role to subsurfaces
     _ = try wlr.DataDeviceManager.create(wl_server); // Handles clipboard
-    _ = try wlr.XdgOutputManagerV1.create(wl_server, wlr_output_layout); // Protocol required by `waybar`
     const wlr_xwayland = try wlr.Xwayland.create(wl_server, wlr_compositor, true);
+
+    const output_manager = try OutputManager.create(wl_server);
+    const scene = try Scene.create(output_manager.wlr_output_layout);
+    const seat = try Seat.create(wl_server);
 
     self.* = .{
         .wl_server = wl_server,
         .wlr_backend = wlr_backend,
         .wlr_renderer = wlr_renderer,
         .wlr_allocator = wlr_allocator,
-        .wlr_output_layout = wlr_output_layout,
-        .scene = try Scene.create(wlr_output_layout),
-        .seat = try Seat.create(wl_server),
+        .output_manager = output_manager,
+        .scene = scene,
+        .seat = seat,
         .wlr_layer_shell_v1 = wlr_layer_shell_v1,
         .wlr_xdg_shell = wlr_xdg_shell,
         .wlr_xwayland = wlr_xwayland,
@@ -71,12 +72,10 @@ pub fn init(self: *Self) anyerror!void {
 
     try self.wlr_renderer.initServer(wl_server);
 
-    self.outputs.init();
-    self.wlr_backend.events.new_output.add(&self.new_output_listener);
+    self.output_manager.init();
+    try self.seat.init(self.wlr_backend, self.output_manager.wlr_output_layout);
 
     self.wlr_xdg_shell.events.new_toplevel.add(&self.new_xdg_toplevel_listener);
-
-    try self.seat.init(self.wlr_backend, self.wlr_output_layout);
 
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 
@@ -87,8 +86,8 @@ pub fn deinit(self: *Self) void {
     self.wl_server.destroyClients();
     self.xwayland_new_surface_listener.link.remove();
     self.new_layer_surface_listener.link.remove();
-    self.new_output_listener.link.remove();
     self.new_xdg_toplevel_listener.link.remove();
+    self.output_manager.deinit();
     self.seat.deinit();
     self.wlr_xwayland.destroy();
     self.wlr_backend.destroy();
@@ -165,7 +164,7 @@ pub fn outputAtCursor(self: *Self) ?*Output {
     const cursor_pos = self.seat.getCursorPos();
     const cx = cursor_pos.x;
     const cy = cursor_pos.y;
-    var output_iterator = owm.SERVER.outputs.iterator(.forward);
+    var output_iterator = owm.SERVER.output_manager.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
         const area = output.area;
         const x = @as(f64, @floatFromInt(area.x));
@@ -177,92 +176,6 @@ pub fn outputAtCursor(self: *Self) ?*Output {
         }
     }
     return null;
-}
-
-/// Called when a new display is discovered
-fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
-    const server: *Self = @fieldParentPtr("new_output_listener", listener);
-
-    const new_output = Output.create(wlr_output) catch |err| {
-        log.errf("Failed to allocate new output {}", .{err});
-        wlr_output.destroy();
-        return;
-    };
-
-    if (!new_output.isDisplay()) {
-        return;
-    }
-
-    var outputs: std.ArrayList(*Output) = .empty;
-    var output_iter = server.outputs.iterator(.forward);
-    while (output_iter.next()) |it| {
-        outputs.append(owm.alloc, it) catch unreachable;
-    }
-
-    if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
-        log.info("Output arrangement found, setting up displays according to it");
-
-        for (arrangement.displays.items) |*display| {
-            var output_to_modify: ?*Output = null;
-            for (outputs.items) |output| {
-                if (std.mem.eql(u8, output.id, display.id)) {
-                    output_to_modify = output;
-                }
-            }
-
-            if (!display.active) {
-                log.infof("Disabling output {s}", .{display.id});
-                output_to_modify.?.disableOutput() catch |err| {
-                    log.errf("Failed to disable output {}", .{err});
-                };
-                continue;
-            }
-
-            log.infof(
-                "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
-                .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
-            );
-
-            output_to_modify.?.setModeAndPos(
-                display.x,
-                display.y,
-                Output.Mode{
-                    .width = display.width,
-                    .height = display.height,
-                    .refresh = display.refresh,
-                },
-            ) catch |err| {
-                log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
-                continue;
-            };
-        }
-    } else {
-        var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
-            log.err("Failed to initialize memory for new arrangement");
-            return;
-        };
-
-        for (outputs.items) |output| {
-            displays.append(owm.alloc, owm.config.OutputConfig.Arrangement.Display{
-                .id = output.id,
-                .width = output.area.width,
-                .height = output.area.height,
-                .refresh = output.getRefresh(),
-                .x = output.area.x,
-                .y = output.area.y,
-                .active = output.wlr_output.enabled,
-            }) catch {
-                log.err("Failed to append display definition");
-                displays.deinit(owm.alloc);
-                return;
-            };
-        }
-        const new_arrangement = owm.config.OutputConfig.Arrangement{ .displays = displays };
-        owm.config.getOutput().addNewArrangement(new_arrangement) catch {
-            displays.deinit(owm.alloc);
-            return;
-        };
-    }
 }
 
 fn xwaylandNewSurfaceCallback(listener: *wl.Listener(*wlr.XwaylandSurface), wlr_xwayland_surface: *wlr.XwaylandSurface) void {
@@ -291,7 +204,7 @@ fn newXdgToplevelCallback(_: *wl.Listener(*wlr.XdgToplevel), wlr_xdg_toplevel: *
 
 fn newLayerSurfaceCallback(_: *wl.Listener(*wlr.LayerSurfaceV1), wlr_layer_surface: *wlr.LayerSurfaceV1) void {
     if (wlr_layer_surface.output == null) {
-        wlr_layer_surface.output = owm.SERVER.outputs.first().?.wlr_output;
+        wlr_layer_surface.output = owm.SERVER.output_manager.outputs.first().?.wlr_output;
     }
 
     if (wlr_layer_surface.current.layer != .bottom) {
