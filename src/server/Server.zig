@@ -84,6 +84,7 @@ pub fn init(self: *Self) anyerror!void {
 
 pub fn deinit(self: *Self) void {
     self.wl_server.destroyClients();
+    self.scene.deinit();
     self.xwayland_new_surface_listener.link.remove();
     self.new_layer_surface_listener.link.remove();
     self.new_xdg_toplevel_listener.link.remove();
@@ -140,6 +141,17 @@ pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
                 self.seat.focusTopWindow();
             }
         },
+        // TODO: switch to the specified workspace if it exists on the output that the cursor is located at
+        xkb.Keysym.@"1" => {},
+        xkb.Keysym.@"2" => {},
+        xkb.Keysym.@"3" => {},
+        xkb.Keysym.@"4" => {},
+        xkb.Keysym.@"5" => {},
+        xkb.Keysym.@"6" => {},
+        xkb.Keysym.@"7" => {},
+        xkb.Keysym.@"8" => {},
+        xkb.Keysym.@"9" => {},
+        xkb.Keysym.@"0" => {},
         else => return false,
     }
     return true;

@@ -125,11 +125,11 @@ fn mapCallback(listener: *wl.Listener(void)) void {
     const surface = xwayland.wlr_xwayland_surface.surface.?;
 
     surface.events.commit.add(&xwayland.commit_listener);
-
-    xwayland.wlr_scene_tree = owm.SERVER.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
-        log.err("XWayland: Failed to create subsurface");
-        return;
-    };
+    xwayland.wlr_scene_tree =
+        xwayland.current_output.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
+            log.err("XWayland: Failed to create subsurface");
+            return;
+        };
     xwayland.wlr_xwayland_surface.activate(true);
     xwayland.setPos(xwayland.wlr_scene_tree.?.node.x, xwayland.wlr_scene_tree.?.node.y);
 
