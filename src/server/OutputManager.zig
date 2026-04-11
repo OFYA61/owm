@@ -53,12 +53,20 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     }
 
     owm.config.output.storeDisplay(new_output.id, new_output.getModel());
+    self.setupOutputArrangement();
+}
 
+/// Must be invoked when a new output is detected or when an output is disconnected
+pub fn setupOutputArrangement(self: *Self) void {
     var outputs: std.ArrayList(*Output) = .empty;
     defer outputs.deinit(owm.alloc);
     var output_iter = self.outputs.iterator(.forward);
     while (output_iter.next()) |it| {
         outputs.append(owm.alloc, it) catch unreachable;
+    }
+
+    if (outputs.items.len == 0) { // No outputs to be processed
+        return;
     }
 
     // Compute the ID of the arrangement made out of the currently available displays

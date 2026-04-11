@@ -318,9 +318,13 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
 
     output.link.remove();
 
+    // TODO: handle orphaned windows
     owm.c_alloc.destroy(output);
 
     if (should_terminate_server) {
         owm.SERVER.wl_server.terminate();
+        return;
     }
+
+    owm.SERVER.output_manager.setupOutputArrangement();
 }
