@@ -59,10 +59,24 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     config_display.storeInConfig();
 
     var outputs: std.ArrayList(*Output) = .empty;
+    defer outputs.deinit(owm.alloc);
     var output_iter = self.outputs.iterator(.forward);
     while (output_iter.next()) |it| {
         outputs.append(owm.alloc, it) catch unreachable;
     }
+
+    const compareOutputs = struct {
+        fn compare(_: void, lhs: *Output, rhs: *Output) bool {
+            return std.mem.order(u8, lhs.id, rhs.id) == .lt;
+        }
+    }.compare;
+    std.mem.sort(*Output, outputs.items, {}, compareOutputs);
+    var ids = owm.alloc.alloc([]const u8, outputs.items.len) catch unreachable;
+    for (outputs.items, 0..) |output, idx| {
+        ids[idx] = output.id;
+    }
+    const arrangement_id = std.mem.join(owm.alloc, ":", ids) catch unreachable;
+    _ = arrangement_id;
 
     if (owm.config.getOutputOld().findArrangementForOutputs(&outputs)) |*arrangement| {
         log.info("Output arrangement found, setting up displays according to it");
