@@ -32,7 +32,10 @@ Logs can be found in `$HOME/.local/share/owm/logs`.
 
 ## Configs
 
-Runnig generates the default config if not present.
+Runnig generates the default config files as they are requested with their default values.
 
-Config can be found in `$HOME/.config/owm`. For now there is only a JSON file to define how the displays are configured. If a new combination of monitors are present, it'll
-add the default configuration for the monitors in the config file.
+Config can be found in `$HOME/.config/owm`.
+
+### Dislpay arrangement
+For each display configuration, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
+concatinated with `:`. You can modify the position, resolution, and refresh rate. Needs restart to take affect.

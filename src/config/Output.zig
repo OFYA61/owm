@@ -1,216 +1,77 @@
+//! Config submodule responsible for managing and accessing display output configuration
+
 const std = @import("std");
-const owm = @import("../owm.zig");
+
+const owm = @import("root").owm;
+const log = owm.log;
+
 const utils = @import("utils.zig");
-const alloc = utils.alloc;
 
-pub const OutputConfig = struct {
-    arrangements: std.ArrayList(Arrangement),
+const arrangements_folder_path = "output";
+pub const Arrangement = std.json.ArrayHashMap(DisplayArrangementSettings);
+pub const DisplayArrangementSettings = struct {
+    width: i32,
+    height: i32,
+    refresh: i32,
+    x: i32,
+    y: i32,
+    active: bool,
+};
 
-    pub const Arrangement = struct {
-        displays: std.ArrayList(Display),
+/// Returns back an arrangement if one exists.
+/// The caller is resposnible for calling `.deinit()`.
+pub fn getArrangement(id: []const u8) ?std.json.Parsed(Arrangement) {
+    const file_path = getArrangementFilePath(id);
+    defer owm.alloc.free(file_path);
 
-        pub const Display = struct {
-            id: []const u8,
-            width: i32,
-            height: i32,
-            refresh: i32,
-            x: i32,
-            y: i32,
-            active: bool,
-        };
-    };
-
-    pub fn init() anyerror!OutputConfig {
-        const raw = try OutputConfigRaw.init();
-        defer raw.deinit();
-        var arrangements: std.ArrayList(Arrangement) = try .initCapacity(alloc, raw.value.arrangements.len);
-        errdefer arrangements.deinit(alloc);
-
-        for (raw.value.arrangements) |*raw_arrangement| {
-            var displays: std.ArrayList(Arrangement.Display) = try .initCapacity(alloc, raw_arrangement.displays.len);
-            errdefer displays.deinit(alloc);
-            for (raw_arrangement.displays) |*raw_display| {
-                try displays.append(alloc, Arrangement.Display{
-                    .id = raw_display.id,
-                    .width = raw_display.width,
-                    .height = raw_display.height,
-                    .refresh = raw_display.refresh,
-                    .x = raw_display.x,
-                    .y = raw_display.y,
-                    .active = raw_display.active,
-                });
-            }
-
-            try arrangements.append(alloc, Arrangement{ .displays = displays });
-        }
-
-        return OutputConfig{ .arrangements = arrangements };
-    }
-
-    pub fn deinit(self: *OutputConfig) void {
-        for (self.arrangements.items) |*arrangement| {
-            arrangement.displays.deinit(alloc);
-        }
-        self.arrangements.deinit(alloc);
-    }
-
-    pub fn defaultConfig() OutputConfig {
-        return OutputConfig{ .arrangements = .empty };
-    }
-
-    pub fn findArrangementForOutputs(self: *OutputConfig, outputs: *std.ArrayList(*owm.server.Output)) ?Arrangement {
-        for (self.arrangements.items) |arrangement| {
-            if (arrangement.displays.items.len != outputs.items.len) {
-                continue;
-            }
-            var found_arrangement = true;
-            for (outputs.items) |o| {
-                var found_output = false;
-                for (arrangement.displays.items) |display| {
-                    if (std.mem.eql(u8, o.id, display.id)) {
-                        found_output = true;
-                        break;
-                    }
-                }
-                if (!found_output) {
-                    found_arrangement = false;
-                    break;
-                }
-            }
-            if (found_arrangement) {
-                return arrangement;
-            }
-        }
+    if (!utils.checkConfigFileExists(file_path)) {
         return null;
     }
 
-    /// Use to add new output arrangements when an unknown output configuration has shown up
-    pub fn addNewArrangement(self: *OutputConfig, new_arrangement: Arrangement) !void {
-        self.arrangements.append(alloc, new_arrangement) catch |err| {
-            owm.log.errf("Config - Output - Failed to add new arrangement {}", .{err});
-            return err;
-        };
+    return utils.load(Arrangement, file_path) catch unreachable;
+}
 
-        const raw_arrangements = try alloc.alloc(OutputConfigRaw.ArrangementRaw, self.arrangements.items.len);
-        for (self.arrangements.items, 0..) |*arr, i| {
-            const raw_displays = try alloc.alloc(OutputConfigRaw.ArrangementRaw.DisplayRaw, arr.displays.items.len);
+pub fn storeArrangement(id: []const u8, arrangement: Arrangement) void {
+    const file_path = getArrangementFilePath(id);
+    defer owm.alloc.free(file_path);
+    utils.ensureConfigFileExists(Arrangement, arrangement, file_path) catch return;
+    utils.save(Arrangement, arrangement, file_path);
+}
 
-            for (arr.displays.items, 0..) |disp, j| {
-                raw_displays[j] = .{
-                    .id = disp.id,
-                    .width = disp.width,
-                    .height = disp.height,
-                    .refresh = disp.refresh,
-                    .x = disp.x,
-                    .y = disp.y,
-                    .active = disp.active,
-                };
-            }
-            raw_arrangements[i] = .{ .displays = raw_displays };
-        }
+inline fn getArrangementFilePath(id: []const u8) []const u8 {
+    const file_name = std.mem.join(owm.alloc, "", &[_][]const u8{ id, ".json" }) catch unreachable;
+    defer owm.alloc.free(file_name);
+    return std.fs.path.join(owm.alloc, &.{ arrangements_folder_path, file_name }) catch unreachable;
+}
 
-        var output_config_raw = OutputConfigRaw{ .arrangements = raw_arrangements };
-        output_config_raw.save() catch {
-            owm.log.err("Config - Output - Failed to save new config");
-        };
-
-        for (raw_arrangements) |arr| {
-            alloc.free(arr.displays);
-        }
-        alloc.free(raw_arrangements);
-    }
+const displays_file_path = "output/displays.json";
+pub const Display = struct {
+    id: []const u8,
+    model: []const u8,
 };
+const DisplaysConfig = []Display;
+const defualt_displays_config: DisplaysConfig = &.{};
 
-const OutputConfigRaw = struct {
-    arrangements: []ArrangementRaw,
-
-    pub const ArrangementRaw = struct {
-        displays: []DisplayRaw,
-
-        pub const DisplayRaw = struct {
-            id: []const u8,
-            width: i32,
-            height: i32,
-            refresh: i32,
-            x: i32,
-            y: i32,
-            active: bool,
-        };
-    };
-
-    pub fn init() anyerror!std.json.Parsed(OutputConfigRaw) {
-        const file = openConfigFile(.read_only) catch |err| {
-            owm.log.errf("Config - Output - Failed to open config file with error: {}, using default configuration", .{err});
-            return err;
-        };
-        defer file.close();
-
-        const file_end_pos = file.getEndPos() catch |err| {
-            owm.log.errf("Config - Output - Failed to read config file with error: {}, using default configuration", .{err});
-            return err;
-        };
-        // Let `Parsed.deinit()` handle cleaning up `file_contents`
-        const file_contents = file.readToEndAlloc(alloc, file_end_pos) catch |err| {
-            owm.log.errf("Config - Output - Failed to read config file with error: {}, using default configuration", .{err});
-            return err;
-        };
-
-        return utils.parseJsonSlice(OutputConfigRaw, file_contents) catch |err| {
-            owm.log.errf("Config - Output - Failed to parse output config with error: {}, using default configuration", .{err});
-            return err;
-        };
+pub fn storeDisplay(id: []const u8, model: []const u8) void {
+    utils.ensureConfigFileExists(DisplaysConfig, defualt_displays_config, displays_file_path) catch return;
+    const displays_json = utils.load(DisplaysConfig, displays_file_path) catch return;
+    defer displays_json.deinit();
+    var found = false;
+    for (displays_json.value) |*d| {
+        if (std.mem.eql(u8, d.id, id)) {
+            found = true;
+        }
     }
 
-    pub fn save(self: *OutputConfigRaw) anyerror!void {
-        owm.log.info("Config - Output - Saving new config");
-        const json = std.fmt.allocPrint(
-            alloc,
-            "{f}",
-            .{std.json.fmt(self, .{ .whitespace = .indent_tab })},
-        ) catch unreachable;
-
-        var file = try openConfigFile(.write_only);
-        try file.writeAll(json);
-        owm.log.info("Config - Output - Saved new config");
+    if (found) {
+        return;
     }
 
-    fn openConfigFile(mode: std.fs.File.OpenMode) anyerror!std.fs.File {
-        owm.log.info("Config - Output - Attempting to open output.json");
+    const display = Display{ .id = id, .model = model };
 
-        const home = std.process.getEnvVarOwned(alloc, "HOME") catch {
-            return error.MissingHomeEnvironmentVariable;
-        };
-        defer alloc.free(home);
-        const full_path = try std.fs.path.join(alloc, &.{
-            home,
-            ".config/owm/output.json",
-        });
-        defer alloc.free(full_path);
-
-        return std.fs.openFileAbsolute(full_path, .{ .mode = mode }) catch |err| {
-            if (err != error.FileNotFound) {
-                owm.log.err("Config - Output - Unexpected error when trying to open output.json config file");
-                return err;
-            }
-
-            owm.log.info("Config - Output - output.json does not exist, creating file with default config");
-            const file = std.fs.createFileAbsolute(full_path, .{}) catch unreachable;
-            _ = try file.write(defaultConfigJson());
-            file.close();
-
-            return std.fs.openFileAbsolute(full_path, .{ .mode = .read_only });
-        };
-    }
-
-    fn defaultConfig() OutputConfigRaw {
-        return OutputConfigRaw{ .arrangements = &.{} };
-    }
-
-    fn defaultConfigJson() []const u8 {
-        const json = std.json.fmt(
-            defaultConfig(),
-            .{ .whitespace = .indent_tab },
-        );
-        return std.fmt.allocPrint(alloc, "{f}", .{json}) catch unreachable;
-    }
-};
+    var updated_displays_list = owm.alloc.alloc(Display, displays_json.value.len + 1) catch return;
+    defer owm.alloc.free(updated_displays_list);
+    @memcpy(updated_displays_list[0..displays_json.value.len], displays_json.value);
+    updated_displays_list[displays_json.value.len] = display;
+    utils.save(DisplaysConfig, updated_displays_list, displays_file_path);
+}

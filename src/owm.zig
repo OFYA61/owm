@@ -17,7 +17,6 @@ pub var SERVER: server.Server = undefined;
 
 pub fn init() anyerror!void {
     try log.init();
-    try config.init();
     try SERVER.init();
 }
 
@@ -27,6 +26,5 @@ pub fn run() anyerror!void {
 
 pub fn deinit() void {
     SERVER.deinit();
-    config.deinit();
     log.deinit();
 }

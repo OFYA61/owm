@@ -100,10 +100,10 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     };
     owm.SERVER.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
+    const serial = wlr_output.serial orelse wlr_output.name;
+
     const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
-        std.mem.span(wlr_output.name),
-        std.mem.span(wlr_output.model orelse ""),
-        std.mem.span(wlr_output.serial orelse ""),
+        std.mem.span(serial),
     });
 
     const area = wlr.Box{
@@ -129,6 +129,13 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     wlr_output.events.destroy.add(&self.destroy_listener);
 
     return self;
+}
+
+pub fn getModel(self: *Self) []const u8 {
+    if (self.wlr_output.model) |model| {
+        return std.mem.span(model);
+    }
+    return std.mem.span(self.wlr_output.name);
 }
 
 pub fn disableOutput(self: *Self) Error!void {
