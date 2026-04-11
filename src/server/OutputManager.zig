@@ -52,11 +52,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         return;
     }
 
-    const config_display = owm.config.Output.Display{
-        .id = new_output.id,
-        .model = new_output.getModel(),
-    };
-    config_display.storeInConfig();
+    owm.config.Output.storeDisplay(new_output.id, new_output.getModel());
 
     var outputs: std.ArrayList(*Output) = .empty;
     defer outputs.deinit(owm.alloc);
