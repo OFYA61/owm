@@ -100,10 +100,11 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     };
     owm.SERVER.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
+    // Generate a SHA256 hash of the serial number for the ID, or use empty string if no serial
+    const serial = wlr_output.serial orelse "";
+
     const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
-        std.mem.span(wlr_output.name),
-        std.mem.span(wlr_output.model orelse ""),
-        std.mem.span(wlr_output.serial orelse ""),
+        std.mem.span(serial),
     });
 
     const area = wlr.Box{
