@@ -107,6 +107,14 @@ pub fn infof(comptime fmt: []const u8, args: anytype) void {
     log.infof(fmt, args, null) catch unreachable;
 }
 
+pub fn warn(message: []const u8) void {
+    log.warn(message, null) catch unreachable;
+}
+
+pub fn warnf(comptime fmt: []const u8, args: anytype) void {
+    log.warnf(fmt, args, null) catch unreachable;
+}
+
 pub fn err(message: []const u8) void {
     log.err(message, null) catch unreachable;
 }

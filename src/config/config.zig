@@ -5,15 +5,16 @@ const owm = @import("../owm.zig");
 
 var config: Config = undefined;
 
-pub const OutputConfig = @import("Output.zig").OutputConfig;
+pub const Output = @import("Output.zig");
+pub const OutputConfigOld = @import("OutputOld.zig").OutputConfig;
 
 pub const Config = struct {
-    output: OutputConfig,
+    output: OutputConfigOld,
 
     fn init() anyerror!Config {
         owm.log.info("Config - Initializing");
         return .{
-            .output = OutputConfig.init() catch OutputConfig.defaultConfig(),
+            .output = OutputConfigOld.init() catch OutputConfigOld.defaultConfig(),
         };
     }
 
@@ -30,6 +31,6 @@ pub fn deinit() void {
     config.deinit();
 }
 
-pub fn getOutput() *OutputConfig {
+pub fn getOutputOld() *OutputConfigOld {
     return &config.output;
 }

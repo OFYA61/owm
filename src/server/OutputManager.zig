@@ -52,13 +52,19 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         return;
     }
 
+    const config_display = owm.config.Output.Display{
+        .id = new_output.id,
+        .model = new_output.getModel(),
+    };
+    config_display.storeInConfig();
+
     var outputs: std.ArrayList(*Output) = .empty;
     var output_iter = self.outputs.iterator(.forward);
     while (output_iter.next()) |it| {
         outputs.append(owm.alloc, it) catch unreachable;
     }
 
-    if (owm.config.getOutput().findArrangementForOutputs(&outputs)) |*arrangement| {
+    if (owm.config.getOutputOld().findArrangementForOutputs(&outputs)) |*arrangement| {
         log.info("Output arrangement found, setting up displays according to it");
 
         for (arrangement.displays.items) |*display| {
@@ -96,13 +102,13 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
             };
         }
     } else {
-        var displays = std.ArrayList(owm.config.OutputConfig.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
+        var displays = std.ArrayList(owm.config.OutputConfigOld.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
             log.err("Failed to initialize memory for new arrangement");
             return;
         };
 
         for (outputs.items) |output| {
-            displays.append(owm.alloc, owm.config.OutputConfig.Arrangement.Display{
+            displays.append(owm.alloc, owm.config.OutputConfigOld.Arrangement.Display{
                 .id = output.id,
                 .width = output.area.width,
                 .height = output.area.height,
@@ -116,8 +122,8 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
                 return;
             };
         }
-        const new_arrangement = owm.config.OutputConfig.Arrangement{ .displays = displays };
-        owm.config.getOutput().addNewArrangement(new_arrangement) catch {
+        const new_arrangement = owm.config.OutputConfigOld.Arrangement{ .displays = displays };
+        owm.config.getOutputOld().addNewArrangement(new_arrangement) catch {
             displays.deinit(owm.alloc);
             return;
         };
