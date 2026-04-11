@@ -18,8 +18,7 @@ pub const Error = error{
 
 /// Loads and parses the provided config `file_path` into the given type `T`. If does not exist
 /// creates a default cconfig file with the provided `default_value`.
-pub fn load(comptime T: type, file_path: []const u8, default_value: T) Error!std.json.Parsed(T) {
-    try ensureConfigFileExists(intoJsonString(T, default_value), file_path);
+pub fn load(comptime T: type, file_path: []const u8) Error!std.json.Parsed(T) {
     const file = openConfigFile(.read_only, file_path) catch {
         return Error.FailedToOpenFile;
     };
@@ -60,7 +59,7 @@ pub fn save(comptime T: type, object: T, file_path: []const u8) void {
 fn openConfigFile(mode: std.fs.File.OpenMode, relative_path: []const u8) !std.fs.File {
     log.infof("Config: Attempting to open existing file '{s}'", .{relative_path});
 
-    const full_path = try getFullConfigFilePath(relative_path);
+    const full_path = getFullConfigFilePath(relative_path);
     defer owm.alloc.free(full_path);
 
     return std.fs.openFileAbsolute(full_path, .{ .mode = mode }) catch |err| {
@@ -75,9 +74,20 @@ fn openConfigFile(mode: std.fs.File.OpenMode, relative_path: []const u8) !std.fs
     };
 }
 
+pub fn checkConfigFileExists(relative_path: []const u8) bool {
+    const full_path = getFullConfigFilePath(relative_path);
+    defer owm.alloc.free(full_path);
+
+    std.fs.accessAbsolute(full_path, .{ .mode = .read_only }) catch {
+        return false;
+    };
+
+    return true;
+}
+
 /// Ensures that the given file exists, if it doesn not, it creates one with the provided default value
-fn ensureConfigFileExists(default_value: []const u8, relative_path: []const u8) Error!void {
-    const full_path = try getFullConfigFilePath(relative_path);
+pub fn ensureConfigFileExists(comptime T: type, default_value: T, relative_path: []const u8) Error!void {
+    const full_path = getFullConfigFilePath(relative_path);
     defer owm.alloc.free(full_path);
 
     const file_check = std.fs.openFileAbsolute(full_path, .{ .mode = .read_only });
@@ -106,7 +116,7 @@ fn ensureConfigFileExists(default_value: []const u8, relative_path: []const u8) 
         };
         defer file.close();
 
-        file.writeAll(default_value) catch {
+        file.writeAll(intoJsonString(T, default_value)) catch {
             log.errf("Config: Failed to write to file '{s}'", .{full_path});
             return Error.FailedToWriteFile;
         };
@@ -121,10 +131,8 @@ fn ensureConfigFileExists(default_value: []const u8, relative_path: []const u8) 
 /// const full_path = getFullConfigFilePath("output/displays.json");
 /// defer owm.alloc.free(full_path);
 /// ```
-fn getFullConfigFilePath(relative_path: []const u8) ![]u8 {
-    const home = std.process.getEnvVarOwned(alloc, "HOME") catch {
-        return Error.MissingHomeEnvironmentVariable;
-    };
+fn getFullConfigFilePath(relative_path: []const u8) []u8 {
+    const home = std.process.getEnvVarOwned(alloc, "HOME") catch unreachable;
     defer alloc.free(home);
     return std.fs.path.join(alloc, &.{ home, ".config", "owm", relative_path }) catch unreachable;
 }

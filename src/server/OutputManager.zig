@@ -52,7 +52,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         return;
     }
 
-    owm.config.Output.storeDisplay(new_output.id, new_output.getModel());
+    owm.config.output.storeDisplay(new_output.id, new_output.getModel());
 
     var outputs: std.ArrayList(*Output) = .empty;
     defer outputs.deinit(owm.alloc);
@@ -61,6 +61,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
         outputs.append(owm.alloc, it) catch unreachable;
     }
 
+    // Compute the ID of the arrangement made out of the currently available displays
     const compareOutputs = struct {
         fn compare(_: void, lhs: *Output, rhs: *Output) bool {
             return std.mem.order(u8, lhs.id, rhs.id) == .lt;
@@ -68,26 +69,21 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     }.compare;
     std.mem.sort(*Output, outputs.items, {}, compareOutputs);
     var ids = owm.alloc.alloc([]const u8, outputs.items.len) catch unreachable;
+    defer owm.alloc.free(ids);
     for (outputs.items, 0..) |output, idx| {
         ids[idx] = output.id;
     }
     const arrangement_id = std.mem.join(owm.alloc, ":", ids) catch unreachable;
-    _ = arrangement_id;
 
-    if (owm.config.getOutputOld().findArrangementForOutputs(&outputs)) |*arrangement| {
-        log.info("Output arrangement found, setting up displays according to it");
+    if (owm.config.output.getArrangement(arrangement_id)) |arrangement| {
+        defer arrangement.deinit();
+        log.infof("Output arrangement found for id '{s}', setting up displays according to it", .{arrangement_id});
+        for (outputs.items) |output| {
+            const display_settings = arrangement.value.map.get(output.id).?;
 
-        for (arrangement.displays.items) |*display| {
-            var output_to_modify: ?*Output = null;
-            for (outputs.items) |output| {
-                if (std.mem.eql(u8, output.id, display.id)) {
-                    output_to_modify = output;
-                }
-            }
-
-            if (!display.active) {
-                log.infof("Disabling output {s}", .{display.id});
-                output_to_modify.?.disableOutput() catch |err| {
+            if (!display_settings.active) {
+                log.infof("Disabling output {s}", .{output.id});
+                output.disableOutput() catch |err| {
                     log.errf("Failed to disable output {}", .{err});
                 };
                 continue;
@@ -95,47 +91,46 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 
             log.infof(
                 "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
-                .{ display.id, display.x, display.y, display.width, display.height, display.refresh },
+                .{
+                    output.id,
+                    display_settings.x,
+                    display_settings.y,
+                    display_settings.width,
+                    display_settings.height,
+                    display_settings.refresh,
+                },
             );
 
-            output_to_modify.?.setModeAndPos(
-                display.x,
-                display.y,
+            output.setModeAndPos(
+                display_settings.x,
+                display_settings.y,
                 Output.Mode{
-                    .width = display.width,
-                    .height = display.height,
-                    .refresh = display.refresh,
+                    .width = display_settings.width,
+                    .height = display_settings.height,
+                    .refresh = display_settings.refresh,
                 },
             ) catch |err| {
-                log.errf("Failed to set mode and pos for output {s}: {}", .{ display.id, err });
+                log.errf("Failed to set mode and pos for output {s}: {}", .{ output.id, err });
                 continue;
             };
         }
     } else {
-        var displays = std.ArrayList(owm.config.OutputConfigOld.Arrangement.Display).initCapacity(owm.alloc, outputs.items.len) catch {
-            log.err("Failed to initialize memory for new arrangement");
-            return;
-        };
-
+        var arrangement = owm.config.output.Arrangement{};
+        defer arrangement.deinit(owm.alloc);
         for (outputs.items) |output| {
-            displays.append(owm.alloc, owm.config.OutputConfigOld.Arrangement.Display{
-                .id = output.id,
-                .width = output.area.width,
-                .height = output.area.height,
-                .refresh = output.getRefresh(),
-                .x = output.area.x,
-                .y = output.area.y,
-                .active = output.wlr_output.enabled,
-            }) catch {
-                log.err("Failed to append display definition");
-                displays.deinit(owm.alloc);
-                return;
-            };
+            arrangement.map.put(
+                owm.alloc,
+                output.id,
+                owm.config.output.DisplayArrangementSettings{
+                    .width = output.area.width,
+                    .height = output.area.height,
+                    .refresh = output.getRefresh(),
+                    .x = output.area.x,
+                    .y = output.area.y,
+                    .active = output.wlr_output.enabled,
+                },
+            ) catch unreachable;
         }
-        const new_arrangement = owm.config.OutputConfigOld.Arrangement{ .displays = displays };
-        owm.config.getOutputOld().addNewArrangement(new_arrangement) catch {
-            displays.deinit(owm.alloc);
-            return;
-        };
+        owm.config.output.storeArrangement(arrangement_id, arrangement);
     }
 }
