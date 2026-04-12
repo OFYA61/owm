@@ -42,6 +42,16 @@ pub const OutputScene = struct {
         });
     }
 
+    pub fn switchWorkspace(self: *OutputScene, new_workspace_idx: usize) void {
+        if (new_workspace_idx >= self.workspaces.items.len) {
+            return;
+        }
+        // TODO: fix previous workspace not cleaning up fully
+        self.getCurrentWorkspaceRoot().node.enabled = false;
+        self.current_workspace_idx = new_workspace_idx;
+        self.getCurrentWorkspaceRoot().node.enabled = true;
+    }
+
     pub fn removeWorkspace(self: *OutputScene, remove_idx: usize) void {
         _ = self;
         _ = remove_idx;
@@ -127,6 +137,9 @@ pub fn createOutputScene(self: *Self, output: *Output) !*OutputScene {
         .root = try self.layers.workspace.createSceneTree(),
     };
     try output_scene.newWorkspace();
+    // TODO: adding 2 workspaces for now for testing purposes, remove this in the future when workspaces get created via user actions
+    try output_scene.newWorkspace();
+    output_scene.workspaces.items[1].root.node.enabled = false;
     try self.output_scenes.append(owm.alloc, output_scene);
     return &self.output_scenes.items[self.output_scenes.items.len - 1];
 }

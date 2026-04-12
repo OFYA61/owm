@@ -7,6 +7,7 @@ const posix = @import("std").posix;
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
+const pixman = @import("pixman");
 
 const owm = @import("root").owm;
 const log = owm.log;

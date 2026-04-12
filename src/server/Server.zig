@@ -141,17 +141,36 @@ pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
                 self.seat.focusTopWindow();
             }
         },
-        // TODO: switch to the specified workspace if it exists on the output that the cursor is located at
-        xkb.Keysym.@"1" => {},
-        xkb.Keysym.@"2" => {},
-        xkb.Keysym.@"3" => {},
-        xkb.Keysym.@"4" => {},
-        xkb.Keysym.@"5" => {},
-        xkb.Keysym.@"6" => {},
-        xkb.Keysym.@"7" => {},
-        xkb.Keysym.@"8" => {},
-        xkb.Keysym.@"9" => {},
-        xkb.Keysym.@"0" => {},
+        xkb.Keysym.@"1" => {
+            self.outputAtCursor().?.scene.switchWorkspace(0);
+        },
+        xkb.Keysym.@"2" => {
+            self.outputAtCursor().?.scene.switchWorkspace(1);
+        },
+        xkb.Keysym.@"3" => {
+            self.outputAtCursor().?.scene.switchWorkspace(2);
+        },
+        xkb.Keysym.@"4" => {
+            self.outputAtCursor().?.scene.switchWorkspace(3);
+        },
+        xkb.Keysym.@"5" => {
+            self.outputAtCursor().?.scene.switchWorkspace(4);
+        },
+        xkb.Keysym.@"6" => {
+            self.outputAtCursor().?.scene.switchWorkspace(5);
+        },
+        xkb.Keysym.@"7" => {
+            self.outputAtCursor().?.scene.switchWorkspace(6);
+        },
+        xkb.Keysym.@"8" => {
+            self.outputAtCursor().?.scene.switchWorkspace(7);
+        },
+        xkb.Keysym.@"9" => {
+            self.outputAtCursor().?.scene.switchWorkspace(8);
+        },
+        xkb.Keysym.@"0" => {
+            self.outputAtCursor().?.scene.switchWorkspace(9);
+        },
         else => return false,
     }
     return true;
