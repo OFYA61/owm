@@ -282,7 +282,7 @@ fn recalculateWorkArea(self: *Self) void {
     log.infof("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
 }
 
-/// Called every time when an output is ready to display a farme, generally at the refresh rate
+/// Called every time when an output is ready to display a frame, generally at the refresh rate
 fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
     const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(wlr_output).?;
     // Render the scene if needed and commit the output
