@@ -31,13 +31,16 @@ request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
 pub fn create(xdg_toplevel_window: *Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
-    const scene_tree = owm.SERVER.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
+    const output = owm.SERVER.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
+
+    const scene_tree = output.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         log.err("Failed to create scene tree for XdgToplevel");
         return client.Error.FailedToCreateSceneTree;
     };
+
     errdefer scene_tree.node.link.remove();
+
     scene_tree.node.data = xdg_toplevel_window;
-    const output = owm.SERVER.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
 
     return .{
         .wlr_xdg_toplevel = wlr_xdg_toplevel,

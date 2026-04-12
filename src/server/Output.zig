@@ -7,18 +7,22 @@ const posix = @import("std").posix;
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
+const pixman = @import("pixman");
 
 const owm = @import("root").owm;
 const log = owm.log;
 
+const OutputScene = @import("Scene.zig").OutputScene;
+
 id: []u8,
 wlr_output: *wlr.Output,
-layout_output: *wlr.OutputLayout.Output,
-scene_output: *wlr.SceneOutput,
+wlr_layout_output: *wlr.OutputLayout.Output,
+wlr_scene_output: *wlr.SceneOutput,
 area: wlr.Box,
 work_area: wlr.Box,
 link: wl.list.Link = undefined,
 exclusive_zones: std.ArrayList(ExclusiveZone) = .empty,
+scene: *OutputScene,
 
 frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
 request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
@@ -100,10 +104,8 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     };
     owm.SERVER.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
 
-    const serial = wlr_output.serial orelse wlr_output.name;
-
     const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
-        std.mem.span(serial),
+        std.mem.span(wlr_output.serial orelse wlr_output.name),
     });
 
     const area = wlr.Box{
@@ -118,8 +120,9 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         .wlr_output = wlr_output,
         .area = area,
         .work_area = area,
-        .layout_output = layout_output,
-        .scene_output = scene_output,
+        .wlr_layout_output = layout_output,
+        .wlr_scene_output = scene_output,
+        .scene = try owm.SERVER.scene.createOutputScene(self),
     };
 
     wlr_output.data = self;
@@ -177,7 +180,7 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
 
     const x = @as(c_int, new_x);
     const y = @as(c_int, new_y);
-    self.layout_output = owm.SERVER.output_manager.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
+    self.wlr_layout_output = owm.SERVER.output_manager.wlr_output_layout.add(self.wlr_output, x, y) catch unreachable;
     self.area = wlr.Box{
         .x = x,
         .y = y,
@@ -291,35 +294,39 @@ fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
 
 /// Called when the backend requests a new state for the output. E.g. new mode request when resizing it in Wayland backend
 fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), event: *wlr.Output.event.RequestState) void {
-    const output: *Self = @fieldParentPtr("request_state_listener", listener);
-    _ = output.wlr_output.commitState(event.state);
+    const self: *Self = @fieldParentPtr("request_state_listener", listener);
+    _ = self.wlr_output.commitState(event.state);
     if (owm.SERVER.wlr_backend.isWl() or owm.SERVER.wlr_backend.isX11()) {
-        output.area = .{
+        self.area = .{
             .x = 0,
             .y = 0,
             .width = event.output.width,
             .height = event.output.height,
         };
-        output.recalculateWorkArea();
+        self.recalculateWorkArea();
     }
 }
 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
-    const output: *Self = @fieldParentPtr("destroy_listener", listener);
+    const self: *Self = @fieldParentPtr("destroy_listener", listener);
 
     var should_terminate_server = true;
-    if (output.isDisplay()) {
+    if (self.isDisplay()) {
         should_terminate_server = false;
     }
 
-    output.frame_listener.link.remove();
-    output.request_state_listener.link.remove();
-    output.destroy_listener.link.remove();
+    self.frame_listener.link.remove();
+    self.request_state_listener.link.remove();
+    self.destroy_listener.link.remove();
 
-    output.link.remove();
+    self.link.remove();
 
     // TODO: handle orphaned windows
-    owm.c_alloc.destroy(output);
+    if (!should_terminate_server) {
+        owm.SERVER.scene.removeOutputScene(self);
+    }
+
+    owm.c_alloc.destroy(self);
 
     if (should_terminate_server) {
         owm.SERVER.wl_server.terminate();

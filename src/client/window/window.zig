@@ -157,9 +157,13 @@ pub const Window = struct {
         switch (self.window) {
             .xdg_toplevel => |*t| {
                 t.current_output = output;
+                t.wlr_scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
             },
             .xwayland => |*xw| {
                 xw.current_output = output;
+                if (xw.wlr_scene_tree) |scene_tree| {
+                    scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
+                }
             },
         }
     }

@@ -84,6 +84,7 @@ pub fn init(self: *Self) anyerror!void {
 
 pub fn deinit(self: *Self) void {
     self.wl_server.destroyClients();
+    self.scene.deinit();
     self.xwayland_new_surface_listener.link.remove();
     self.new_layer_surface_listener.link.remove();
     self.new_xdg_toplevel_listener.link.remove();
@@ -139,6 +140,36 @@ pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
             } else {
                 self.seat.focusTopWindow();
             }
+        },
+        xkb.Keysym.@"1" => {
+            self.outputAtCursor().?.scene.switchWorkspace(0);
+        },
+        xkb.Keysym.@"2" => {
+            self.outputAtCursor().?.scene.switchWorkspace(1);
+        },
+        xkb.Keysym.@"3" => {
+            self.outputAtCursor().?.scene.switchWorkspace(2);
+        },
+        xkb.Keysym.@"4" => {
+            self.outputAtCursor().?.scene.switchWorkspace(3);
+        },
+        xkb.Keysym.@"5" => {
+            self.outputAtCursor().?.scene.switchWorkspace(4);
+        },
+        xkb.Keysym.@"6" => {
+            self.outputAtCursor().?.scene.switchWorkspace(5);
+        },
+        xkb.Keysym.@"7" => {
+            self.outputAtCursor().?.scene.switchWorkspace(6);
+        },
+        xkb.Keysym.@"8" => {
+            self.outputAtCursor().?.scene.switchWorkspace(7);
+        },
+        xkb.Keysym.@"9" => {
+            self.outputAtCursor().?.scene.switchWorkspace(8);
+        },
+        xkb.Keysym.@"0" => {
+            self.outputAtCursor().?.scene.switchWorkspace(9);
         },
         else => return false,
     }

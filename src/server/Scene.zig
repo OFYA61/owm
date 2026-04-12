@@ -9,6 +9,7 @@ const wlr = @import("wlroots");
 const owm = @import("root").owm;
 const log = owm.log;
 
+const Output = @import("Output.zig");
 const Window = owm.client.window.Window;
 
 pub const WindowAtResponse = struct {
@@ -29,11 +30,58 @@ pub const Workspace = struct {
     windows: wl.list.Head(Window, .link) = undefined,
 };
 
+pub const OutputScene = struct {
+    root: *wlr.SceneTree,
+    output: *Output,
+    current_workspace_idx: usize = 0,
+    workspaces: std.ArrayList(Workspace) = .empty,
+
+    pub fn newWorkspace(self: *OutputScene) !void {
+        try self.workspaces.append(owm.alloc, Workspace{
+            .root = try self.root.createSceneTree(),
+        });
+    }
+
+    pub fn switchWorkspace(self: *OutputScene, new_workspace_idx: usize) void {
+        if (new_workspace_idx >= self.workspaces.items.len) {
+            return;
+        }
+        // TODO: fix previous workspace not cleaning up fully
+        self.getCurrentWorkspaceRoot().node.enabled = false;
+        self.current_workspace_idx = new_workspace_idx;
+        self.getCurrentWorkspaceRoot().node.enabled = true;
+    }
+
+    pub fn removeWorkspace(self: *OutputScene, remove_idx: usize) void {
+        _ = self;
+        _ = remove_idx;
+        // TODO:
+        // 1. Move windows to the previous workspace
+        // 2. Remove the workspace
+    }
+
+    inline fn getCurrentWorkspace(self: *OutputScene) *Workspace {
+        return &self.workspaces.items[self.current_workspace_idx];
+    }
+
+    pub fn getCurrentWorkspaceRoot(self: *OutputScene) *wlr.SceneTree {
+        return self.getCurrentWorkspace().root;
+    }
+};
+
+const OrphanWindow = struct {
+    workspace_idx: usize,
+    window: *Window,
+};
+
 wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
 
-workspaces: std.ArrayList(Workspace) = .empty,
 current_workspace_idx: usize = 0,
+workspaces: std.ArrayList(Workspace) = .empty,
+
+output_scenes: std.ArrayList(OutputScene) = .empty,
+orphaned_windows: std.ArrayList(OrphanWindow) = .empty,
 
 root: *wlr.SceneTree,
 layers: struct {
@@ -76,6 +124,34 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
     try new_scene.createWorkspace();
 
     return new_scene;
+}
+
+pub fn deinit(self: *Self) void {
+    self.output_scenes.deinit(owm.alloc);
+    self.orphaned_windows.deinit(owm.alloc);
+}
+
+pub fn createOutputScene(self: *Self, output: *Output) !*OutputScene {
+    var output_scene = OutputScene{
+        .output = output,
+        .root = try self.layers.workspace.createSceneTree(),
+    };
+    try output_scene.newWorkspace();
+    // TODO: adding 2 workspaces for now for testing purposes, remove this in the future when workspaces get created via user actions
+    try output_scene.newWorkspace();
+    output_scene.workspaces.items[1].root.node.enabled = false;
+    try self.output_scenes.append(owm.alloc, output_scene);
+    return &self.output_scenes.items[self.output_scenes.items.len - 1];
+}
+
+pub fn removeOutputScene(self: *Self, output: *Output) void {
+    for (self.output_scenes.items, 0..) |os, idx| {
+        if (os.output == output) {
+            _ = self.output_scenes.swapRemove(idx);
+            return;
+        }
+    }
+    log.err("Tried to remove OutputScene for an unknown output");
 }
 
 fn createWorkspace(self: *Self) !void {

@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
     const scanner = Scanner.create(b, .{});
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
     scanner.addSystemProtocol("stable/tablet/tablet-v2.xml");
+    scanner.addSystemProtocol("staging/color-management/color-management-v1.xml");
     scanner.addCustomProtocol(b.path("./protocols/wlr-layer-shell-unstable-v1.xml"));
 
     // Wayland protocols
@@ -20,6 +21,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("wl_data_device_manager", 3);
     scanner.generate("xdg_wm_base", 2);
     scanner.generate("zwp_tablet_manager_v2", 1);
+    scanner.generate("wp_color_manager_v1", 2);
 
     // Unstable wayland protocols
     scanner.generate("zwlr_layer_shell_v1", 5);
@@ -37,7 +39,7 @@ pub fn build(b: *std.Build) void {
     // exposed to the wlroots module for @cImport() to work. This seems to be
     // the best way to do so with the current std.Build API.
     wlroots.resolved_target = target;
-    wlroots.linkSystemLibrary("wlroots-0.19", .{});
+    wlroots.linkSystemLibrary("wlroots-0.20", .{});
 
     const logly = b.dependency("logly", .{
         .target = target,
