@@ -197,6 +197,10 @@ pub fn outputAtCursor(self: *Self) ?*Output {
     const cy = cursor_pos.y;
     var output_iterator = owm.SERVER.output_manager.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
+        if (!output.is_active) {
+            continue;
+        }
+
         const area = output.area;
         const x = @as(f64, @floatFromInt(area.x));
         const y = @as(f64, @floatFromInt(area.y));

@@ -50,6 +50,7 @@ pub const OutputScene = struct {
         self.getCurrentWorkspaceRoot().node.enabled = false;
         self.current_workspace_idx = new_workspace_idx;
         self.getCurrentWorkspaceRoot().node.enabled = true;
+        self.output.damageWhole();
     }
 
     pub fn removeWorkspace(self: *OutputScene, remove_idx: usize) void {

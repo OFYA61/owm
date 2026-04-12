@@ -23,6 +23,7 @@ work_area: wlr.Box,
 link: wl.list.Link = undefined,
 exclusive_zones: std.ArrayList(ExclusiveZone) = .empty,
 scene: *OutputScene,
+is_active: bool = true,
 
 frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
 request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
@@ -150,6 +151,7 @@ pub fn disableOutput(self: *Self) Error!void {
         return Error.CommitState;
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
+    self.is_active = false;
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -188,6 +190,7 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
         .height = self.wlr_output.height,
     };
     self.recalculateWorkArea();
+    self.is_active = true;
 }
 
 pub fn getRefresh(self: *Self) i32 {
@@ -256,6 +259,30 @@ pub fn removeExclusiveZoneByOwner(self: *Self, owner: *owm.client.LayerSurface) 
     }
 }
 
+pub fn damageWhole(self: *Self) void {
+    log.infof("Damaging display {s} {s}", .{ self.getModel(), self.id });
+    const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(self.wlr_output).?;
+    const x: c_int = self.area.x;
+    const y: c_int = self.area.y;
+    const width: c_uint = @intCast(self.wlr_output.width);
+    const height: c_uint = @intCast(self.wlr_output.height);
+
+    var damage: pixman.Region32 = undefined;
+    defer damage.deinit();
+    damage.initRect(x, y, width, height);
+
+    var clipped: pixman.Region32 = undefined;
+    defer clipped.deinit();
+    clipped.init();
+    _ = clipped.intersectRect(&damage, x, y, width, height);
+
+    if (clipped.notEmpty()) {
+        self.wlr_output.scheduleFrame();
+        scene_output.damage_ring.add(&clipped);
+        _ = scene_output.private.pending_commit_damage.@"union"(&scene_output.private.pending_commit_damage, &clipped);
+    }
+}
+
 fn recalculateWorkArea(self: *Self) void {
     var top: c_int = 0;
     var bottom: c_int = 0;
@@ -283,10 +310,27 @@ fn recalculateWorkArea(self: *Self) void {
 }
 
 /// Called every time when an output is ready to display a frame, generally at the refresh rate
-fn frameCallback(_: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+    const self: *Self = @fieldParentPtr("frame_listener", listener);
+    _ = self;
+
     const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(wlr_output).?;
-    // Render the scene if needed and commit the output
-    _ = scene_output.commit(null);
+    if (!(scene_output.output.needs_frame or pixman.Region32.notEmpty(&scene_output.private.pending_commit_damage) or scene_output.private.gamma_lut != null)) {
+        return;
+    }
+
+    var output_state = wlr.Output.State.init();
+    defer output_state.finish();
+
+    if (!scene_output.buildState(&output_state, null)) {
+        log.err("Failed to build output state");
+        return;
+    }
+
+    if (!wlr_output.commitState(&output_state)) {
+        log.err("Failed to commit output state");
+        return;
+    }
 
     var now = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch @panic("CLOCK_MONOTONIC not supported");
     scene_output.sendFrameDone(&now);
