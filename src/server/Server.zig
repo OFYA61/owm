@@ -24,6 +24,7 @@ seat: Seat,
 wlr_backend: *wlr.Backend,
 wlr_allocator: *wlr.Allocator,
 wlr_renderer: *wlr.Renderer,
+wlr_egl: *wlr.Egl,
 
 wlr_layer_shell_v1: *wlr.LayerShellV1,
 new_layer_surface_listener: wl.Listener(*wlr.LayerSurfaceV1) = .init(newLayerSurfaceCallback),
@@ -59,6 +60,7 @@ pub fn init(self: *Self) anyerror!void {
         .wl_server = wl_server,
         .wlr_backend = wlr_backend,
         .wlr_renderer = wlr_renderer,
+        .wlr_egl = wlr_renderer.gles2GetEgl(),
         .wlr_allocator = wlr_allocator,
         .output_manager = output_manager,
         .scene = scene,
@@ -197,6 +199,10 @@ pub fn outputAtCursor(self: *Self) ?*Output {
     const cy = cursor_pos.y;
     var output_iterator = owm.SERVER.output_manager.outputs.iterator(.forward);
     while (output_iterator.next()) |output| {
+        if (!output.is_active) {
+            continue;
+        }
+
         const area = output.area;
         const x = @as(f64, @floatFromInt(area.x));
         const y = @as(f64, @floatFromInt(area.y));
