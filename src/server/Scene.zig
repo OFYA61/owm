@@ -40,25 +40,17 @@ pub const OutputScene = struct {
         try self.workspaces.append(owm.alloc, Workspace{
             .root = try self.root.createSceneTree(),
         });
+        self.workspaces.items[self.workspaces.items.len - 1].windows.init();
     }
 
     pub fn switchWorkspace(self: *OutputScene, new_workspace_idx: usize) void {
         if (new_workspace_idx >= self.workspaces.items.len) {
             return;
         }
-        // TODO: fix previous workspace not cleaning up fully
         self.getCurrentWorkspaceRoot().node.enabled = false;
         self.current_workspace_idx = new_workspace_idx;
         self.getCurrentWorkspaceRoot().node.enabled = true;
         self.output.damageWhole();
-    }
-
-    pub fn removeWorkspace(self: *OutputScene, remove_idx: usize) void {
-        _ = self;
-        _ = remove_idx;
-        // TODO:
-        // 1. Move windows to the previous workspace
-        // 2. Remove the workspace
     }
 
     inline fn getCurrentWorkspace(self: *OutputScene) *Workspace {

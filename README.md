@@ -4,7 +4,7 @@
 ```bash
 sudo pacman -S wayland wayland-protocols pixman libxkbcommon libinput
 ```
-2. Install wlroots, see [the offical repository](https://gitlab.freedesktop.org/wlroots/wlroots/) on how to install it.
+2. Install wlroots `0.20`, see [the offical repository](https://gitlab.freedesktop.org/wlroots/wlroots/) on how to install it.
 
 ## Run
 
@@ -39,3 +39,18 @@ Config can be found in `$HOME/.config/owm`.
 ### Dislpay arrangement
 For each display configuration, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
 concatinated with `:`. You can modify the position, resolution, and refresh rate. Needs restart to take affect.
+
+## TODO
+
+- [ ] Workspaces
+    - [ ] Create worksapces
+    - [ ] Move windows between workspaces
+    - [ ] Cleanup workspaces on output destroy
+    - [ ] Move destroyed outputs windows to another outputs workspaces
+- [ ] Finish implementing `wlr-layer-shell` protocol
+    - [ ] Handle status bar positioning on all 4 sides
+    - [ ] Launchers and App Menus
+    - [ ] Wallpapers (background layer)
+    - [ ] Notifications (overlay layer)
+    - [ ] Screen Lockers (overlay layer)
+- [ ] Custom rendering logic, cuz I want to

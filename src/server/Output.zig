@@ -260,7 +260,6 @@ pub fn removeExclusiveZoneByOwner(self: *Self, owner: *owm.client.LayerSurface) 
 }
 
 pub fn damageWhole(self: *Self) void {
-    log.infof("Damaging display {s} {s}", .{ self.getModel(), self.id });
     const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(self.wlr_output).?;
     const x: c_int = self.area.x;
     const y: c_int = self.area.y;
