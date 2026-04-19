@@ -59,9 +59,9 @@ fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyb
     const keycode = event.keycode + 8;
 
     var handled = false;
-    if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
+    if (event.state == .pressed) {
         for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-            if (owm.SERVER.handleKeybind(sym)) {
+            if (owm.SERVER.handleKeybind(wlr_keyboard.getModifiers(), sym)) {
                 handled = true;
                 break;
             }
