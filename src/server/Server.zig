@@ -1,6 +1,7 @@
 const Self = @This();
 
 const std = @import("std");
+const posix = std.posix;
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
@@ -177,17 +178,20 @@ pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
 }
 
 fn spawnChild(self: *Self, command: [:0]const u8) anyerror!void {
-    var child = std.process.Child.init(
-        &[_][]const u8{ "/bin/sh", "-c", command },
-        owm.c_alloc,
-    );
-
     var env_map = try std.process.getEnvMap(owm.c_alloc);
     defer env_map.deinit();
     try env_map.put("WAYLAND_DISPLAY", &self.wl_socket);
     try env_map.put("DISPLAY", std.mem.span(self.wlr_xwayland.display_name));
-    child.env_map = &env_map;
 
+    log.infof("Running command '{s}'", .{command});
+    var child = std.process.Child.init(
+        &[_][]const u8{ "/bin/sh", "-c", command },
+        owm.c_alloc,
+    );
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+    child.env_map = &env_map;
     try child.spawn();
 }
 
