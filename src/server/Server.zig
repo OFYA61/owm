@@ -116,8 +116,10 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key: xkb
             },
             .NextWindow => {
                 if (self.seat.focused_window) |_| {
-                    if (self.scene.switchToNextWindowInWorkspace()) |next_window| {
-                        self.seat.focusWindow(next_window);
+                    if (self.outputAtCursor()) |output| {
+                        if (output.scene.switchToNextWindowInWorkspace()) |next_window| {
+                            self.seat.focusWindow(next_window);
+                        }
                     }
                 } else {
                     self.seat.focusTopWindow();

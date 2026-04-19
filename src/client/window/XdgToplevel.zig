@@ -79,7 +79,7 @@ pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
         self.wlr_scene_tree.node.raiseToTop();
-        owm.SERVER.scene.raiseWindowToTopOfWorkspace(Window.from(self));
+        self.current_output.scene.raiseWindowToTopOfWorkspace(Window.from(self));
     }
 }
 
@@ -147,7 +147,7 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    owm.SERVER.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
+    toplevel.current_output.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
     owm.SERVER.seat.focusWindow(xdg_toplevel_window);
 }
 

@@ -60,6 +60,31 @@ pub const OutputScene = struct {
     pub fn getCurrentWorkspaceRoot(self: *OutputScene) *wlr.SceneTree {
         return self.getCurrentWorkspace().root;
     }
+
+    pub fn addWindowToCurrentWorkspace(self: *OutputScene, window: *Window) void {
+        self.getCurrentWorkspace().windows.append(window);
+    }
+
+    pub fn raiseWindowToTopOfWorkspace(self: *OutputScene, window: *Window) void {
+        window.link.remove();
+        self.getCurrentWorkspace().windows.prepend(window);
+    }
+
+    /// Puts the topmost window at the end of the list and returns the new top window.
+    /// Also known as `Alt+Tab`
+    pub fn switchToNextWindowInWorkspace(self: *OutputScene) ?*Window {
+        var workspace = self.getCurrentWorkspace();
+        if (workspace.windows.first()) |first_window| {
+            first_window.link.remove();
+            workspace.windows.append(first_window);
+            return workspace.windows.first().?;
+        }
+        return null;
+    }
+
+    pub fn getTopWindowInWorkspace(self: *OutputScene) ?*Window {
+        return self.getCurrentWorkspace().windows.first();
+    }
 };
 
 const OrphanWindow = struct {
@@ -69,9 +94,6 @@ const OrphanWindow = struct {
 
 wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
-
-current_workspace_idx: usize = 0,
-workspaces: std.ArrayList(Workspace) = .empty,
 
 output_scenes: std.ArrayList(OutputScene) = .empty,
 orphaned_windows: std.ArrayList(OrphanWindow) = .empty,
@@ -98,11 +120,10 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
     const wlr_scene = try wlr.Scene.create();
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
     const root = try wlr_scene.tree.createSceneTree();
-    var new_scene = Self{
+    return Self{
         .wlr_scene = wlr_scene,
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .root = root,
-        .current_workspace_idx = 0,
         .layers = .{
             .background = try root.createSceneTree(),
             .bottom = try root.createSceneTree(),
@@ -113,10 +134,6 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
             .override_redirect = try root.createSceneTree(),
         },
     };
-
-    try new_scene.createWorkspace();
-
-    return new_scene;
 }
 
 pub fn deinit(self: *Self) void {
@@ -145,49 +162,6 @@ pub fn removeOutputScene(self: *Self, output: *Output) void {
         }
     }
     log.err("Tried to remove OutputScene for an unknown output");
-}
-
-fn createWorkspace(self: *Self) !void {
-    try self.workspaces.append(
-        owm.alloc,
-        .{
-            .root = try self.layers.workspace.createSceneTree(),
-        },
-    );
-    self.workspaces.items[self.current_workspace_idx].windows.init();
-}
-
-fn getCurrentWorkspace(self: *Self) *Workspace {
-    return &self.workspaces.items[self.current_workspace_idx];
-}
-
-pub fn getCurrentWorkspaceRoot(self: *Self) *wlr.SceneTree {
-    return self.getCurrentWorkspace().root;
-}
-
-pub fn addWindowToCurrentWorkspace(self: *Self, window: *Window) void {
-    self.getCurrentWorkspace().windows.append(window);
-}
-
-pub fn raiseWindowToTopOfWorkspace(self: *Self, window: *Window) void {
-    window.link.remove();
-    self.getCurrentWorkspace().windows.prepend(window);
-}
-
-/// Puts the topmost window at the end of the list and returns the new top window.
-/// Also known as `Alt+Tab`
-pub fn switchToNextWindowInWorkspace(self: *Self) ?*Window {
-    var workspace = self.getCurrentWorkspace();
-    if (workspace.windows.first()) |first_window| {
-        first_window.link.remove();
-        workspace.windows.append(first_window);
-        return workspace.windows.first().?;
-    }
-    return null;
-}
-
-pub fn getTopWindowInWorkspace(self: *Self) ?*Window {
-    return self.getCurrentWorkspace().windows.first();
 }
 
 pub fn getLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
