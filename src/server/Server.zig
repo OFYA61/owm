@@ -123,7 +123,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key: xkb
                     self.seat.focusTopWindow();
                 }
             },
-            .SwithWorkspace => |idx| {
+            .SwitchWorkspace => |idx| {
                 if (self.outputAtCursor()) |output| {
                     output.scene.switchWorkspace(idx - 1);
                 }
