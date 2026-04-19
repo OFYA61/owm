@@ -42,6 +42,7 @@ concatinated with `:`. You can modify the position, resolution, and refresh rate
 
 ## TODO
 
+- [ ] Keybindings
 - [ ] Workspaces
     - [ ] Create worksapces
     - [ ] Move windows between workspaces
