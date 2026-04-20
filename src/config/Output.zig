@@ -7,7 +7,7 @@ const log = owm.log;
 
 const utils = @import("utils.zig");
 
-const arrangements_folder_path = "output";
+const config_folder_path = "output";
 pub const Arrangement = std.json.ArrayHashMap(DisplayArrangementSettings);
 pub const DisplayArrangementSettings = struct {
     width: i32,
@@ -41,7 +41,7 @@ pub fn storeArrangement(id: []const u8, arrangement: Arrangement) void {
 inline fn getArrangementFilePath(id: []const u8) []const u8 {
     const file_name = std.mem.join(owm.alloc, "", &[_][]const u8{ id, ".json" }) catch unreachable;
     defer owm.alloc.free(file_name);
-    return std.fs.path.join(owm.alloc, &.{ arrangements_folder_path, file_name }) catch unreachable;
+    return std.fs.path.join(owm.alloc, &.{ config_folder_path, file_name }) catch unreachable;
 }
 
 const displays_file_path = "output/displays.json";

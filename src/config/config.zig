@@ -6,3 +6,7 @@ pub const keybinds = @import("Keybinds.zig");
 pub fn init() !void {
     try keybinds.init();
 }
+
+pub fn deinit() void {
+    keybinds.deinit();
+}

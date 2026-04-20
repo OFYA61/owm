@@ -11,10 +11,13 @@ const utils = @import("utils.zig");
 var KEYBINDS: std.ArrayList(Keybind) = undefined;
 
 const ModifierMask = wlr.Keyboard.ModifierMask;
+const Keysym = xkb.Keysym;
+
+const keybind_file_path = "keybind/keybinds";
 
 pub const Keybind = struct {
     modifiers: ModifierMask,
-    keysym: xkb.Keysym,
+    keysym: Keysym,
     action: Action,
 
     pub const Action = union(enum) {
@@ -34,39 +37,6 @@ pub const Keybind = struct {
     };
 
     pub fn fromConfigStr(raw_config_str: []const u8) error{ InvalidFormat, InvalidModifier }!Keybind {
-        const Tokenizer = struct {
-            const Self = @This();
-
-            stream: *std.ArrayList(u8),
-            seperator: u8,
-            config_progress: usize = 0,
-            finished: bool = false,
-
-            fn create(stream: *std.ArrayList(u8), seperator: u8) Self {
-                return .{
-                    .stream = stream,
-                    .seperator = seperator,
-                };
-            }
-
-            fn next(self: *Self) ?[]u8 {
-                if (self.finished) {
-                    return null;
-                }
-                for (self.stream.items[self.config_progress..], self.config_progress..) |c, i| {
-                    if (c != self.seperator) {
-                        continue;
-                    }
-
-                    const ret_value = self.stream.items[self.config_progress..i];
-                    self.config_progress = i + 1;
-                    return ret_value;
-                }
-                self.finished = true;
-                return self.stream.items[self.config_progress..];
-            }
-        };
-
         var config_str: std.ArrayList(u8) = .empty;
         defer config_str.deinit(owm.alloc);
 
@@ -77,7 +47,7 @@ pub const Keybind = struct {
             }
         }
 
-        var keybind_tokenizer: Tokenizer = .create(&config_str, ',');
+        var keybind_tokenizer: utils.Tokenizer = .create(&config_str, ',');
 
         var modifiers: ModifierMask = .{};
         const modifier_token = keybind_tokenizer.next() orelse {
@@ -89,7 +59,7 @@ pub const Keybind = struct {
             defer modifier_stream.deinit(owm.alloc);
             modifier_stream.appendSlice(owm.alloc, modifier_token) catch unreachable;
 
-            var modifier_tokenizer: Tokenizer = .create(&modifier_stream, '_');
+            var modifier_tokenizer: utils.Tokenizer = .create(&modifier_stream, '_');
             while (modifier_tokenizer.next()) |token| {
                 if (std.mem.eql(u8, token, "Shift")) {
                     modifiers.shift = true;
@@ -113,7 +83,7 @@ pub const Keybind = struct {
             return error.InvalidFormat;
         }
         const key_name = owm.alloc.dupeZ(u8, key_token) catch unreachable;
-        const keysym = xkb.Keysym.fromName(key_name, .case_insensitive);
+        const keysym = Keysym.fromName(key_name, .case_insensitive);
         owm.alloc.free(key_name);
 
         const action_type_token = keybind_tokenizer.next() orelse {
@@ -148,8 +118,7 @@ pub const Keybind = struct {
                     return error.InvalidFormat;
                 }
                 action = .{ .SwitchWorkspace = idx };
-            }
-            if (std.mem.eql(u8, action_type_token, "Command")) {
+            } else if (std.mem.eql(u8, action_type_token, "Command")) {
                 const command = owm.alloc.dupeZ(u8, action_param_token) catch unreachable;
                 action = .{ .Command = command };
             } else {
@@ -168,38 +137,33 @@ pub const Keybind = struct {
 pub fn init() !void {
     KEYBINDS = .empty;
 
-    if (Keybind.fromConfigStr("Alt , Escape , Terminate")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , F1 , NextWindow")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , m , ToggleMaximize")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
+    try utils.ensureConfigFileExists([]u8, "", keybind_file_path);
+    const config_raw = try utils.loadRaw(keybind_file_path);
+    defer owm.alloc.free(config_raw);
 
-    if (Keybind.fromConfigStr("Alt , t , Command , ghostty")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , f , Command , cosmic-files")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , b , Command , brave")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
+    var config_raw_stream = std.ArrayList(u8).initCapacity(owm.alloc, config_raw.len) catch unreachable;
+    defer config_raw_stream.deinit(owm.alloc);
+    config_raw_stream.appendSlice(owm.alloc, config_raw) catch unreachable;
+    var config_tokenizer: utils.Tokenizer = .create(&config_raw_stream, '\n');
 
-    if (Keybind.fromConfigStr("Alt , 1 , SwitchWorkspace , 1")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , 2 , SwitchWorkspace , 2")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
-    if (Keybind.fromConfigStr("Alt , 3 , SwitchWorkspace , 3")) |keybind| {
-        KEYBINDS.append(owm.alloc, keybind) catch unreachable;
-    } else |_| {}
+    while (config_tokenizer.next()) |token| {
+        if (token.len == 0) {
+            continue;
+        }
+
+        if (Keybind.fromConfigStr(token)) |keybind| {
+            KEYBINDS.append(owm.alloc, keybind) catch unreachable;
+        } else |_| {
+            log.errf("Config: Failed to parse keybind config {s}", .{token});
+        }
+    }
 }
 
-pub fn getKeybind(modifiers: ModifierMask, keysym: xkb.Keysym) ?*Keybind {
+pub fn deinit() void {
+    KEYBINDS.deinit(owm.alloc);
+}
+
+pub fn getKeybind(modifiers: ModifierMask, keysym: Keysym) ?*Keybind {
     for (KEYBINDS.items) |*keybind| {
         if (keybind.modifiers == modifiers and keybind.keysym == keysym) {
             return keybind;
