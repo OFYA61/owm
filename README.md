@@ -40,6 +40,15 @@ Config can be found in `$HOME/.config/owm`.
 For each display configuration, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
 concatinated with `:`. You can modify the position, resolution, and refresh rate. Needs restart to take affect.
 
+**TODO**: WRite docs around display arrangement
+
+### Keybinds
+
+The keybinds file can be found in `$HOME/.config/owm/keybind/keybinds`. If one doesnt' exist, on startup it'll get created with the default values.
+See the default keybinds at `./src/config/Keybinds.zig` to see how to configure keybinds.
+
+**TODO**: Write docs around keybinds.
+
 ## TODO
 
 - [ ] Keybindings
