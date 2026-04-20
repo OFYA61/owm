@@ -51,7 +51,7 @@ See the default keybinds at `./src/config/Keybinds.zig` to see how to configure 
 
 ## TODO
 
-- [ ] Keybindings
+- [x] Keybindings
 - [ ] Workspaces
     - [ ] Create worksapces
     - [ ] Move windows between workspaces
