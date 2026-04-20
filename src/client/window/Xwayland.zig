@@ -46,6 +46,12 @@ pub fn setup(self: *Self) void {
 
 pub fn setFocus(self: *Self, focus: bool) void {
     self.wlr_xwayland_surface.activate(focus);
+    if (focus) {
+        if (self.wlr_scene_tree) |scene_tree| {
+            scene_tree.node.raiseToTop();
+            self.current_output.scene.raiseWindowToTopOfWorkspace(Window.from(self));
+        }
+    }
 }
 
 pub fn toggleMaximize(self: *Self) void {
@@ -135,7 +141,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     const xwayland_window = Window.from(xwayland);
     xwayland.wlr_scene_tree.?.node.data = xwayland_window;
-    owm.SERVER.scene.addWindowToCurrentWorkspace(xwayland_window);
+    xwayland.current_output.scene.addWindowToCurrentWorkspace(xwayland_window);
     owm.SERVER.seat.focusWindow(xwayland_window);
 }
 

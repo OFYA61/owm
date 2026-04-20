@@ -108,73 +108,42 @@ pub fn run(self: *Self) anyerror!void {
     self.wl_server.run();
 }
 
-pub fn handleKeybind(self: *Self, key: xkb.Keysym) bool {
-    switch (@intFromEnum(key)) {
-        xkb.Keysym.Escape => {
-            self.wl_server.terminate();
-        },
-        xkb.Keysym.t => {
-            self.spawnChild("ghostty") catch {
-                log.err("Failed to spawn cosmic-term");
-            };
-        },
-        xkb.Keysym.f => {
-            self.spawnChild("cosmic-files") catch {
-                log.err("Failed to spawn cosmic-files");
-            };
-        },
-        xkb.Keysym.b => {
-            self.spawnChild("brave") catch {
-                log.err("Failed to spawm brave");
-            };
-        },
-        xkb.Keysym.m => {
-            if (self.seat.focused_window) |window| {
-                window.toggleMaximize();
-            }
-        },
-        xkb.Keysym.F1 => {
-            if (self.seat.focused_window) |_| {
-                if (self.scene.switchToNextWindowInWorkspace()) |next_window| {
-                    self.seat.focusWindow(next_window);
+pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key: xkb.Keysym) bool {
+    if (owm.config.keybinds.getKeybind(modifiers, key)) |keybind| {
+        switch (keybind.action) {
+            .Terminate => {
+                self.wl_server.terminate();
+            },
+            .NextWindow => {
+                if (self.seat.focused_window) |_| {
+                    if (self.outputAtCursor()) |output| {
+                        if (output.scene.switchToNextWindowInWorkspace()) |next_window| {
+                            self.seat.focusWindow(next_window);
+                        }
+                    }
+                } else {
+                    self.seat.focusTopWindow();
                 }
-            } else {
-                self.seat.focusTopWindow();
-            }
-        },
-        xkb.Keysym.@"1" => {
-            self.outputAtCursor().?.scene.switchWorkspace(0);
-        },
-        xkb.Keysym.@"2" => {
-            self.outputAtCursor().?.scene.switchWorkspace(1);
-        },
-        xkb.Keysym.@"3" => {
-            self.outputAtCursor().?.scene.switchWorkspace(2);
-        },
-        xkb.Keysym.@"4" => {
-            self.outputAtCursor().?.scene.switchWorkspace(3);
-        },
-        xkb.Keysym.@"5" => {
-            self.outputAtCursor().?.scene.switchWorkspace(4);
-        },
-        xkb.Keysym.@"6" => {
-            self.outputAtCursor().?.scene.switchWorkspace(5);
-        },
-        xkb.Keysym.@"7" => {
-            self.outputAtCursor().?.scene.switchWorkspace(6);
-        },
-        xkb.Keysym.@"8" => {
-            self.outputAtCursor().?.scene.switchWorkspace(7);
-        },
-        xkb.Keysym.@"9" => {
-            self.outputAtCursor().?.scene.switchWorkspace(8);
-        },
-        xkb.Keysym.@"0" => {
-            self.outputAtCursor().?.scene.switchWorkspace(9);
-        },
-        else => return false,
+            },
+            .SwitchWorkspace => |idx| {
+                if (self.outputAtCursor()) |output| {
+                    output.scene.switchWorkspace(idx - 1);
+                }
+            },
+            .Command => |command| {
+                self.spawnChild(command) catch {
+                    log.errf("Failed to run command {s}", .{command});
+                };
+            },
+            .ToggleMaximize => {
+                if (self.seat.focused_window) |window| {
+                    window.toggleMaximize();
+                }
+            },
+        }
+        return true;
     }
-    return true;
+    return false;
 }
 
 fn spawnChild(self: *Self, command: [:0]const u8) anyerror!void {

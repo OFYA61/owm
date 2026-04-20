@@ -12,11 +12,30 @@ pub const Error = error{
     FailedToCreateFile,
     FailedToGetDirectory,
     FailedToOpenFile,
+    FailedToReadFile,
     FailedToWriteFile,
     MissingHomeEnvironmentVariable,
 };
 
-/// Loads and parses the provided config `file_path` into the given type `T`. If does not exist
+/// Loads the file contents as raw string. The caller is repsonsible for freeing up the memory.
+pub fn loadRaw(file_path: []const u8) Error![]u8 {
+    const file = openConfigFile(.read_only, file_path) catch {
+        return Error.FailedToOpenFile;
+    };
+    defer file.close();
+
+    const file_end_pos = file.getEndPos() catch |err| {
+        log.errf("Config: Failed to read config file '{s}' with error {}", .{ file_path, err });
+        return Error.FailedToOpenFile;
+    };
+
+    return file.readToEndAlloc(owm.alloc, file_end_pos) catch |err| {
+        log.errf("Config: Failed to read config file '{s}' with error {}", .{ file_path, err });
+        return Error.FailedToReadFile;
+    };
+}
+
+/// Loads and parses the provided config `file_path` into the given type `T` from JSON. If does not exist
 /// creates a default cconfig file with the provided `default_value`.
 pub fn load(comptime T: type, file_path: []const u8) Error!std.json.Parsed(T) {
     const file = openConfigFile(.read_only, file_path) catch {
@@ -31,7 +50,7 @@ pub fn load(comptime T: type, file_path: []const u8) Error!std.json.Parsed(T) {
 
     const file_contents = file.readToEndAlloc(owm.alloc, file_end_pos) catch |err| {
         log.errf("Config: Failed to read config file '{s}' with error {}", .{ file_path, err });
-        return Error.FailedToOpenFile;
+        return Error.FailedToReadFile;
     };
 
     return parseJsonToObject(T, file_contents) catch |err| {
@@ -86,7 +105,7 @@ pub fn checkConfigFileExists(relative_path: []const u8) bool {
 }
 
 /// Ensures that the given file exists, if it doesn not, it creates one with the provided default value
-pub fn ensureConfigFileExists(comptime T: type, default_value: T, relative_path: []const u8) Error!void {
+pub fn ensureConfigFileExists(default_value: []const u8, relative_path: []const u8) Error!void {
     const full_path = getFullConfigFilePath(relative_path);
     defer owm.alloc.free(full_path);
 
@@ -116,7 +135,7 @@ pub fn ensureConfigFileExists(comptime T: type, default_value: T, relative_path:
         };
         defer file.close();
 
-        file.writeAll(intoJsonString(T, default_value)) catch {
+        file.writeAll(default_value) catch {
             log.errf("Config: Failed to write to file '{s}'", .{full_path});
             return Error.FailedToWriteFile;
         };
@@ -137,7 +156,7 @@ fn getFullConfigFilePath(relative_path: []const u8) []u8 {
     return std.fs.path.join(alloc, &.{ home, ".config", "owm", relative_path }) catch unreachable;
 }
 
-fn intoJsonString(comptime T: type, object: T) []const u8 {
+pub fn intoJsonString(comptime T: type, object: T) []const u8 {
     const json = std.json.fmt(
         object,
         .{ .whitespace = .indent_tab },
@@ -153,3 +172,52 @@ pub fn parseJsonToObject(comptime T: type, slice: []const u8) std.json.ParseErro
         .{ .ignore_unknown_fields = true },
     );
 }
+
+/// Utility to tokenize an array of characters given a separator character
+/// Example usage
+/// ```zig
+/// const stream_raw: [] u8 = "Some stream";
+///
+/// var stream = std.ArrayList(u8).initCapacity(alloc, stream_raw.len) catch unreachable;
+/// stream.deinit(alloc);
+/// stream.appendSlice(alloc, stream_raw) catch unreachable;
+/// var tokenizer: Tokenizer = .create(&stream, ' ');
+///
+/// while (tokenizer.next()) |token| {
+///     // Process token
+/// }
+/// ```
+pub const Tokenizer = struct {
+    const Self = @This();
+
+    stream: *std.ArrayList(u8),
+    seperator: u8,
+    config_progress: usize = 0,
+    finished: bool = false,
+
+    /// The caller own the `stream` and only passes a reference to the `Tokenizer`
+    pub fn create(stream: *std.ArrayList(u8), seperator: u8) Self {
+        return .{
+            .stream = stream,
+            .seperator = seperator,
+        };
+    }
+
+    /// Returns the next token in the stream, if at the end, returns `null`.
+    pub fn next(self: *Self) ?[]u8 {
+        if (self.finished) {
+            return null;
+        }
+        for (self.stream.items[self.config_progress..], self.config_progress..) |c, i| {
+            if (c != self.seperator) {
+                continue;
+            }
+
+            const ret_value = self.stream.items[self.config_progress..i];
+            self.config_progress = i + 1;
+            return ret_value;
+        }
+        self.finished = true;
+        return self.stream.items[self.config_progress..];
+    }
+};
