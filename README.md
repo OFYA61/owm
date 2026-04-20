@@ -14,7 +14,7 @@ While in a compositor or tty session:
 zig build -Doptimize=ReleaseFast run
 ```
 
-## Commands
+## Default Commands
 
 Commands:
 - Alt + Esc: Terminate
@@ -23,6 +23,7 @@ Commands:
 - Alt + b: Launch brave browser
 - Alt + m: Maximize window
 - Alt + F1: "Alt Tab"
+- Alt + [0-9]: switch workspaces
 
 Modify the keybinds in `handleKeybind` found in `server.zig`.
 
