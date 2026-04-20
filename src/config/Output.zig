@@ -34,7 +34,10 @@ pub fn getArrangement(id: []const u8) ?std.json.Parsed(Arrangement) {
 pub fn storeArrangement(id: []const u8, arrangement: Arrangement) void {
     const file_path = getArrangementFilePath(id);
     defer owm.alloc.free(file_path);
-    utils.ensureConfigFileExists(Arrangement, arrangement, file_path) catch return;
+    utils.ensureConfigFileExists(
+        utils.intoJsonString(Arrangement, arrangement),
+        file_path,
+    ) catch return;
     utils.save(Arrangement, arrangement, file_path);
 }
 
@@ -53,7 +56,10 @@ const DisplaysConfig = []Display;
 const defualt_displays_config: DisplaysConfig = &.{};
 
 pub fn storeDisplay(id: []const u8, model: []const u8) void {
-    utils.ensureConfigFileExists(DisplaysConfig, defualt_displays_config, displays_file_path) catch return;
+    utils.ensureConfigFileExists(
+        utils.intoJsonString(DisplaysConfig, defualt_displays_config),
+        displays_file_path,
+    ) catch return;
     const displays_json = utils.load(DisplaysConfig, displays_file_path) catch return;
     defer displays_json.deinit();
     var found = false;

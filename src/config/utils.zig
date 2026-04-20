@@ -105,7 +105,7 @@ pub fn checkConfigFileExists(relative_path: []const u8) bool {
 }
 
 /// Ensures that the given file exists, if it doesn not, it creates one with the provided default value
-pub fn ensureConfigFileExists(comptime T: type, default_value: T, relative_path: []const u8) Error!void {
+pub fn ensureConfigFileExists(default_value: []const u8, relative_path: []const u8) Error!void {
     const full_path = getFullConfigFilePath(relative_path);
     defer owm.alloc.free(full_path);
 
@@ -135,7 +135,7 @@ pub fn ensureConfigFileExists(comptime T: type, default_value: T, relative_path:
         };
         defer file.close();
 
-        file.writeAll(intoJsonString(T, default_value)) catch {
+        file.writeAll(default_value) catch {
             log.errf("Config: Failed to write to file '{s}'", .{full_path});
             return Error.FailedToWriteFile;
         };
@@ -156,7 +156,7 @@ fn getFullConfigFilePath(relative_path: []const u8) []u8 {
     return std.fs.path.join(alloc, &.{ home, ".config", "owm", relative_path }) catch unreachable;
 }
 
-fn intoJsonString(comptime T: type, object: T) []const u8 {
+pub fn intoJsonString(comptime T: type, object: T) []const u8 {
     const json = std.json.fmt(
         object,
         .{ .whitespace = .indent_tab },

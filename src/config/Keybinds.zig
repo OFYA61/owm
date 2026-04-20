@@ -14,6 +14,26 @@ const ModifierMask = wlr.Keyboard.ModifierMask;
 const Keysym = xkb.Keysym;
 
 const keybind_file_path = "keybind/keybinds";
+const default_config =
+    \\Alt , Escape , Terminate
+    \\Alt , F1 , NextWindow
+    \\Alt , m , ToggleMaximize
+    \\
+    \\Alt , t , Command , ghostty
+    \\Alt , f , Command , cosmic-files
+    \\Alt , b , Command , brave
+    \\
+    \\Alt , 1 , SwitchWorkspace , 1
+    \\Alt , 2 , SwitchWorkspace , 2
+    \\Alt , 3 , SwitchWorkspace , 3
+    \\Alt , 4 , SwitchWorkspace , 4
+    \\Alt , 5 , SwitchWorkspace , 5
+    \\Alt , 6 , SwitchWorkspace , 6
+    \\Alt , 7 , SwitchWorkspace , 7
+    \\Alt , 8 , SwitchWorkspace , 8
+    \\Alt , 9 , SwitchWorkspace , 9
+    \\Alt , 10 , SwitchWorkspace , 10
+;
 
 pub const Keybind = struct {
     modifiers: ModifierMask,
@@ -137,7 +157,7 @@ pub const Keybind = struct {
 pub fn init() !void {
     KEYBINDS = .empty;
 
-    try utils.ensureConfigFileExists([]u8, "", keybind_file_path);
+    try utils.ensureConfigFileExists(default_config, keybind_file_path);
     const config_raw = try utils.loadRaw(keybind_file_path);
     defer owm.alloc.free(config_raw);
 
