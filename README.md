@@ -25,8 +25,6 @@ Commands:
 - Alt + F1: "Alt Tab"
 - Alt + [0-9]: switch workspaces
 
-Modify the keybinds in `handleKeybind` found in `server.zig`.
-
 ## Logs
 
 Logs can be found in `$HOME/.local/share/owm/logs`.
