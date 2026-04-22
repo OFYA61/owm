@@ -82,6 +82,25 @@ pub const OutputScene = struct {
         return null;
     }
 
+    /// Moves a window from its current workspace to a different target workspace.
+    /// If the window is already in the target workspace, it is removed first.
+    pub fn moveWindowToWorkspace(self: *OutputScene, window: *Window, target_workspace_idx: usize) void {
+        // Create intermediate workspaces if the target workspace doesn't exist yet
+        if (target_workspace_idx >= self.workspaces.items.len) {
+            var next_idx: usize = self.workspaces.items.len;
+            while (next_idx <= target_workspace_idx) : (next_idx += 1) {
+                self.newWorkspace() catch {
+                    return;
+                };
+            }
+        }
+
+        window.link.remove();
+        var target_workspace = &self.workspaces.items[target_workspace_idx];
+        window.setSceneTreeParent(target_workspace.root);
+        target_workspace.windows.prepend(window);
+    }
+
     pub fn getTopWindowInWorkspace(self: *OutputScene) ?*Window {
         return self.getCurrentWorkspace().windows.first();
     }

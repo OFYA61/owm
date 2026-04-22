@@ -15,29 +15,40 @@ const Keysym = xkb.Keysym;
 
 const keybind_file_path = "keybind/keybinds";
 const default_config =
-    \\Alt , Escape , Terminate
-    \\Alt , F1 , NextWindow
-    \\Alt , m , ToggleMaximize
+    \\Alt , 1 , Terminate
+    \\Alt , 59 , NextWindow
+    \\Alt , 50 , ToggleMaximize
     \\
-    \\Alt , t , Command , ghostty
-    \\Alt , f , Command , cosmic-files
-    \\Alt , b , Command , brave
+    \\Alt , 20 , Command , ghostty
+    \\Alt , 33 , Command , cosmic-files
+    \\Alt , 48 , Command , brave
     \\
-    \\Alt , 1 , SwitchWorkspace , 1
-    \\Alt , 2 , SwitchWorkspace , 2
-    \\Alt , 3 , SwitchWorkspace , 3
-    \\Alt , 4 , SwitchWorkspace , 4
-    \\Alt , 5 , SwitchWorkspace , 5
-    \\Alt , 6 , SwitchWorkspace , 6
-    \\Alt , 7 , SwitchWorkspace , 7
-    \\Alt , 8 , SwitchWorkspace , 8
-    \\Alt , 9 , SwitchWorkspace , 9
-    \\Alt , 10 , SwitchWorkspace , 10
+    \\Alt , 2 , SwitchWorkspace , 1
+    \\Alt , 3 , SwitchWorkspace , 2
+    \\Alt , 4 , SwitchWorkspace , 3
+    \\Alt , 5 , SwitchWorkspace , 4
+    \\Alt , 6 , SwitchWorkspace , 5
+    \\Alt , 7 , SwitchWorkspace , 6
+    \\Alt , 8 , SwitchWorkspace , 7
+    \\Alt , 9 , SwitchWorkspace , 8
+    \\Alt , 10 , SwitchWorkspace , 9
+    \\Alt , 11 , SwitchWorkspace , 10
+    \\
+    \\Alt_Shift , 2, MoveWindowToWorkspace, 1
+    \\Alt_Shift , 3, MoveWindowToWorkspace, 2
+    \\Alt_Shift , 4, MoveWindowToWorkspace, 3
+    \\Alt_Shift , 5, MoveWindowToWorkspace, 4
+    \\Alt_Shift , 6, MoveWindowToWorkspace, 5
+    \\Alt_Shift , 7, MoveWindowToWorkspace, 6
+    \\Alt_Shift , 8, MoveWindowToWorkspace, 7
+    \\Alt_Shift , 9, MoveWindowToWorkspace, 9
+    \\Alt_Shift , 10, MoveWindowToWorkspace, 9
+    \\Alt_Shift , 11, MoveWindowToWorkspace, 10
 ;
 
 pub const Keybind = struct {
     modifiers: ModifierMask,
-    keysym: Keysym,
+    key_code: u32,
     action: Action,
 
     pub const Action = union(enum) {
@@ -51,6 +62,8 @@ pub const Keybind = struct {
 
         /// Switch to the workspace given it's idx
         SwitchWorkspace: usize,
+        /// Move focused window to the workspace given it's idx
+        MoveWindowToWorkspace: usize,
 
         /// Shell command to run
         Command: [:0]const u8,
@@ -95,16 +108,20 @@ pub const Keybind = struct {
         }
 
         const key_token = keybind_tokenizer.next() orelse {
-            log.err("Config: Invalid keybind config, no key provided");
+            log.err("Config: Invalid keybind config, no key code provided");
             return error.InvalidFormat;
         };
         if (key_token.len == 0) {
-            log.err("Config: Invalid keybind config, no key provided");
+            log.err("Config: Invalid keybind config, no key code provided");
             return error.InvalidFormat;
         }
-        const key_name = owm.alloc.dupeZ(u8, key_token) catch unreachable;
-        const keysym = Keysym.fromName(key_name, .case_insensitive);
-        owm.alloc.free(key_name);
+        const key_code = std.fmt.parseInt(u32, key_token, 10) catch {
+            log.errf(
+                "Config: Invalid keybind config, key code value must be a 0+ number, but got {s}",
+                .{key_token},
+            );
+            return error.InvalidFormat;
+        };
 
         const action_type_token = keybind_tokenizer.next() orelse {
             log.err("Config: Invalid keybind config, no action type provided");
@@ -141,6 +158,22 @@ pub const Keybind = struct {
             } else if (std.mem.eql(u8, action_type_token, "Command")) {
                 const command = owm.alloc.dupeZ(u8, action_param_token) catch unreachable;
                 action = .{ .Command = command };
+            } else if (std.mem.eql(u8, action_type_token, "MoveWindowToWorkspace")) {
+                const idx = std.fmt.parseInt(usize, action_param_token, 10) catch {
+                    log.errf(
+                        "Config: Invalid keybind config, MoveWindowToWorkspace expects a positive integer, but got {s}",
+                        .{action_param_token},
+                    );
+                    return error.InvalidFormat;
+                };
+                if (idx <= 0) {
+                    log.errf(
+                        "Config: Invalid keybind config, MoveWindowToWorkspace expects a positive integer non-zero, but got {s}",
+                        .{action_param_token},
+                    );
+                    return error.InvalidFormat;
+                }
+                action = .{ .MoveWindowToWorkspace = idx };
             } else {
                 log.errf("Config: Invalid keybind config, unknown action type {s}", .{action_type_token});
             }
@@ -148,7 +181,7 @@ pub const Keybind = struct {
 
         return Keybind{
             .modifiers = modifiers,
-            .keysym = keysym,
+            .key_code = key_code,
             .action = action,
         };
     }
@@ -177,15 +210,40 @@ pub fn init() !void {
             log.errf("Config: Failed to parse keybind config {s}", .{token});
         }
     }
+
+    log.info("Config: Keybindings:");
+    // TODO: pretify the modifier printing
+    for (KEYBINDS.items) |*keybind| {
+        switch (keybind.action) {
+            .Terminate => {
+                log.infof("Config:   {} {} Terminate", .{ keybind.modifiers, keybind.key_code });
+            },
+            .NextWindow => {
+                log.infof("Config:   {} {} NextWindow", .{ keybind.modifiers, keybind.key_code });
+            },
+            .SwitchWorkspace => |idx| {
+                log.infof("Config:   {} {} SwitchWorkspace {}", .{ keybind.modifiers, keybind.key_code, idx });
+            },
+            .MoveWindowToWorkspace => |idx| {
+                log.infof("Config:   {} {} MoveWindowToWorkspace {}", .{ keybind.modifiers, keybind.key_code, idx });
+            },
+            .Command => |command| {
+                log.infof("Config:   {} {} Command '{s}'", .{ keybind.modifiers, keybind.key_code, command });
+            },
+            .ToggleMaximize => {
+                log.infof("Config:   {} {} ToggleMaximize", .{ keybind.modifiers, keybind.key_code });
+            },
+        }
+    }
 }
 
 pub fn deinit() void {
     KEYBINDS.deinit(owm.alloc);
 }
 
-pub fn getKeybind(modifiers: ModifierMask, keysym: Keysym) ?*Keybind {
+pub fn getKeybind(modifiers: ModifierMask, key_code: u32) ?*Keybind {
     for (KEYBINDS.items) |*keybind| {
-        if (keybind.modifiers == modifiers and keybind.keysym == keysym) {
+        if (keybind.modifiers == modifiers and keybind.key_code == key_code) {
             return keybind;
         }
     }

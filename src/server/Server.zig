@@ -108,8 +108,8 @@ pub fn run(self: *Self) anyerror!void {
     self.wl_server.run();
 }
 
-pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key: xkb.Keysym) bool {
-    if (owm.config.keybinds.getKeybind(modifiers, key)) |keybind| {
+pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code: u32) bool {
+    if (owm.config.keybinds.getKeybind(modifiers, key_code)) |keybind| {
         switch (keybind.action) {
             .Terminate => {
                 self.wl_server.terminate();
@@ -128,6 +128,16 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key: xkb
             .SwitchWorkspace => |idx| {
                 if (self.outputAtCursor()) |output| {
                     output.scene.switchWorkspace(idx - 1);
+                }
+            },
+            .MoveWindowToWorkspace => |idx| {
+                log.info("MOVING WINDOW");
+                if (self.seat.focused_window) |window| {
+                    log.info("MOVING WINDOW 2");
+                    if (self.outputAtCursor()) |output| {
+                        log.info("MOVING WINDOW 3");
+                        output.scene.moveWindowToWorkspace(window, idx - 1);
+                    }
                 }
             },
             .Command => |command| {

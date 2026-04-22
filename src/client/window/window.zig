@@ -153,6 +153,19 @@ pub const Window = struct {
         }
     }
 
+    pub fn setSceneTreeParent(self: *Self, new_parent: *wlr.SceneTree) void {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                t.wlr_scene_tree.node.reparent(new_parent);
+            },
+            .xwayland => |*xw| {
+                if (xw.wlr_scene_tree) |scene_tree| {
+                    scene_tree.node.reparent(new_parent);
+                }
+            },
+        }
+    }
+
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
         switch (self.window) {
             .xdg_toplevel => |*t| {

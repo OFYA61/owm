@@ -56,16 +56,12 @@ fn keyCallback(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyb
     const wlr_keyboard = keyboard.wlr_device.toKeyboard();
 
     // Translate libinput keycode to xkbcommon
-    const keycode = event.keycode + 8;
+    // const key_code = event.keycode + 8;
+    const key_code = event.keycode;
 
     var handled = false;
-    if (event.state == .pressed) {
-        for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-            if (owm.SERVER.handleKeybind(wlr_keyboard.getModifiers(), sym)) {
-                handled = true;
-                break;
-            }
-        }
+    if (event.state == .pressed and owm.SERVER.handleKeybind(wlr_keyboard.getModifiers(), key_code)) {
+        handled = true;
     }
 
     if (!handled) {
