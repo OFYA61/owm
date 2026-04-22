@@ -47,9 +47,9 @@ pub const OutputScene = struct {
         if (new_workspace_idx >= self.workspaces.items.len) {
             return;
         }
-        self.getCurrentWorkspaceRoot().node.enabled = false;
+        self.getCurrentWorkspaceRoot().node.setEnabled(false);
         self.current_workspace_idx = new_workspace_idx;
-        self.getCurrentWorkspaceRoot().node.enabled = true;
+        self.getCurrentWorkspaceRoot().node.setEnabled(true);
         self.output.damageWhole();
     }
 

@@ -154,16 +154,22 @@ pub const Window = struct {
     }
 
     pub fn setSceneTreeParent(self: *Self, new_parent: *wlr.SceneTree) void {
+        var scene_tree: *wlr.SceneTree = undefined;
         switch (self.window) {
             .xdg_toplevel => |*t| {
-                t.wlr_scene_tree.node.reparent(new_parent);
+                scene_tree = t.wlr_scene_tree;
             },
             .xwayland => |*xw| {
-                if (xw.wlr_scene_tree) |scene_tree| {
-                    scene_tree.node.reparent(new_parent);
+                if (xw.wlr_scene_tree) |st| {
+                    scene_tree = st;
+                } else {
+                    return;
                 }
             },
         }
+        scene_tree.node.reparent(new_parent);
+        scene_tree.node.setEnabled(false);
+        scene_tree.node.setEnabled(true);
     }
 
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {

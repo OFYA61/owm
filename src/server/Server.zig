@@ -131,11 +131,8 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
                 }
             },
             .MoveWindowToWorkspace => |idx| {
-                log.info("MOVING WINDOW");
                 if (self.seat.focused_window) |window| {
-                    log.info("MOVING WINDOW 2");
                     if (self.outputAtCursor()) |output| {
-                        log.info("MOVING WINDOW 3");
                         output.scene.moveWindowToWorkspace(window, idx - 1);
                     }
                 }
