@@ -56,10 +56,9 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     self.setupOutputArrangement();
 }
 
-/// Must be invoked when a new output is detected or when an output is disconnected
+/// Must be invoked when a new output is detected or when an output is disconnected.
 /// It'll check for a valid configuration for the set of given outputs and arrange them accordingly.
-/// If none exist, it'll create a default configuration arranging them from left to right in the
-/// order they're detected.
+/// If none exist, it'll create a default configuration.
 pub fn setupOutputArrangement(self: *Self) void {
     var outputs: std.ArrayList(*Output) = .empty;
     defer outputs.deinit(owm.alloc);
@@ -147,6 +146,7 @@ pub fn setupOutputArrangement(self: *Self) void {
         owm.config.output.storeArrangement(arrangement_id, arrangement);
     }
 
+    // Make sure the cursor isn't outside of the outputs viewports by moving it to the center of an active output
     for (outputs.items) |output| {
         if (output.is_active) {
             owm.SERVER.seat.setCursorPos(

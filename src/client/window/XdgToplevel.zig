@@ -100,12 +100,6 @@ pub fn setSize(self: *Self, new_width: i32, new_height: i32) void {
 
 pub fn getGeom(self: *Self) wlr.Box {
     return self.wlr_xdg_toplevel.base.geometry;
-    // return .{
-    //     .x = self.x,
-    //     .y = self.y,
-    //     .width = self.wlr_xdg_toplevel.base.geometry.width,
-    //     .height = self.wlr_xdg_toplevel.base.geometry.height,
-    // };
 }
 
 pub fn toggleMaximize(self: *Self) void {
