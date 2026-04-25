@@ -147,10 +147,9 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             .MoveWindowToWorkspace => |idx| {
                 if (self.seat.focused_window) |window| {
                     if (self.outputAtCursor()) |output| {
-                        _ = idx;
-                        _ = window;
-                        _ = output;
-                        // TODO: output.scene.moveWindowToWorkspace(window, idx - 1);
+                        output.sceneMoveWindowToWorkspace(window, idx - 1);
+                        window.setFocus(false);
+                        self.seat.clearFocusIfFocusedWindow(window);
                     }
                 }
             },

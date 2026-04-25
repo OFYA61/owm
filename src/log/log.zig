@@ -91,34 +91,34 @@ pub fn deinit() void {
     log.deinit();
 }
 
-pub fn debug(message: []const u8) void {
+pub inline fn debug(message: []const u8) void {
     log.debug(message, null) catch unreachable;
 }
 
-pub fn debugf(comptime fmt: []const u8, args: anytype) void {
+pub inline fn debugf(comptime fmt: []const u8, args: anytype) void {
     log.debugf(fmt, args, null) catch unreachable;
 }
 
-pub fn info(message: []const u8) void {
+pub inline fn info(message: []const u8) void {
     log.info(message, null) catch unreachable;
 }
 
-pub fn infof(comptime fmt: []const u8, args: anytype) void {
+pub inline fn infof(comptime fmt: []const u8, args: anytype) void {
     log.infof(fmt, args, null) catch unreachable;
 }
 
-pub fn warn(message: []const u8) void {
+pub inline fn warn(message: []const u8) void {
     log.warn(message, null) catch unreachable;
 }
 
-pub fn warnf(comptime fmt: []const u8, args: anytype) void {
+pub inline fn warnf(comptime fmt: []const u8, args: anytype) void {
     log.warnf(fmt, args, null) catch unreachable;
 }
 
-pub fn err(message: []const u8) void {
+pub inline fn err(message: []const u8) void {
     log.err(message, null) catch unreachable;
 }
 
-pub fn errf(comptime fmt: []const u8, args: anytype) void {
+pub inline fn errf(comptime fmt: []const u8, args: anytype) void {
     log.errf(fmt, args, null) catch unreachable;
 }

@@ -402,6 +402,27 @@ pub fn sceneAddWindow(self: *Self, window: *Window) void {
     window.setSceneTreeParent(self.sceneGetCurrentRoot());
 }
 
+pub fn sceneMoveWindowToWorkspace(self: *Self, window: *Window, target_workspace_idx: usize) void {
+    const scene = &self.scene;
+    // Create intermediate workspaces if the target workspace doesn't exist yet
+    if (target_workspace_idx >= scene.workspaces.items.len) {
+        var next_idx: usize = scene.workspaces.items.len;
+        while (next_idx <= target_workspace_idx) : (next_idx += 1) {
+            self.sceneCreateWorkspace() catch {
+                log.errf("Output {s}: Failed to create new workspace while trying to move window to it", .{self.id});
+                return;
+            };
+        }
+    }
+
+    window.link.remove();
+    var target_workspace = &scene.workspaces.items[target_workspace_idx];
+    window.setSceneTreeParent(target_workspace.root);
+    target_workspace.windows.prepend(window);
+
+    log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx });
+}
+
 /// Puts the topmost window at the end of the list and returns the new top window in the current workspace
 /// Also known as `Alt+Tab`
 pub fn sceneSwitchToNextWindow(self: *Self) ?*Window {
