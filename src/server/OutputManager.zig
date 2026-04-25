@@ -28,6 +28,7 @@ pub fn init(self: *Self) void {
 }
 
 pub fn deinit(self: *Self) void {
+    log.debug("OutputManager: Cleaning up");
     self.new_output_listener.link.remove();
 }
 

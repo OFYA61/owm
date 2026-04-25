@@ -84,20 +84,33 @@ pub fn init(self: *Self) anyerror!void {
 }
 
 pub fn deinit(self: *Self) void {
+    log.debug("Server: Closing wayland compositor");
     self.wl_server.destroyClients();
-    self.scene.deinit();
+
     self.xwayland_new_surface_listener.link.remove();
     self.new_layer_surface_listener.link.remove();
     self.new_xdg_toplevel_listener.link.remove();
+
     self.output_manager.deinit();
     self.seat.deinit();
+
+    log.debug("Server: Cleaning up Xwayland");
     self.wlr_xwayland.destroy();
+
+    log.debug("Server: Cleaning up Backend");
     self.wlr_backend.destroy();
+
+    self.wl_server.getEventLoop().dispatch(0) catch {
+        log.err("Server: Failed to dispatch events on cleanup");
+    };
+
+    self.scene.deinit();
+
+    log.debug("Server: Cleaning up Display");
     self.wl_server.destroy();
 }
 
 pub fn run(self: *Self) anyerror!void {
-    try self.wlr_backend.start();
     log.infof(
         "Running OWM compositor on WAYLAND_DISPLAY='{s}' and Xwayland DISLPAY='{s}'",
         .{
@@ -105,6 +118,7 @@ pub fn run(self: *Self) anyerror!void {
             self.wlr_xwayland.display_name,
         },
     );
+    try self.wlr_backend.start();
     self.wl_server.run();
 }
 

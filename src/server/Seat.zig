@@ -60,6 +60,9 @@ pub fn init(self: *Self, wlr_backend: *wlr.Backend, wlr_output_layout: *wlr.Outp
 }
 
 pub fn deinit(self: *Self) void {
+    log.debug("Seat: Cleaning up");
+    self.focused_window = null;
+
     self.new_input_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();

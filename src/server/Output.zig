@@ -372,6 +372,7 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     self.frame_listener.link.remove();
     self.request_state_listener.link.remove();
     self.destroy_listener.link.remove();
+    self.is_active = false;
 
     if (!should_terminate_server) {
         owm.SERVER.scene.removeOutputScene(self);
@@ -381,6 +382,7 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     owm.c_alloc.destroy(self);
 
     if (should_terminate_server) {
+        log.infof("Output {s}: Terminating server", .{self.id});
         owm.SERVER.wl_server.terminate();
         return;
     }
