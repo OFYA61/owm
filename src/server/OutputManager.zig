@@ -41,7 +41,7 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
     const self: *Self = @fieldParentPtr("new_output_listener", listener);
 
     const new_output = Output.create(wlr_output) catch |err| {
-        log.errf("Failed to allocate new output {}", .{err});
+        log.errf("OutputManager: Failed to allocate new output {}", .{err});
         wlr_output.destroy();
         return;
     };
@@ -57,6 +57,9 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 }
 
 /// Must be invoked when a new output is detected or when an output is disconnected
+/// It'll check for a valid configuration for the set of given outputs and arrange them accordingly.
+/// If none exist, it'll create a default configuration arranging them from left to right in the
+/// order they're detected.
 pub fn setupOutputArrangement(self: *Self) void {
     var outputs: std.ArrayList(*Output) = .empty;
     defer outputs.deinit(owm.alloc);
@@ -83,22 +86,24 @@ pub fn setupOutputArrangement(self: *Self) void {
     }
     const arrangement_id = std.mem.join(owm.alloc, ":", ids) catch unreachable;
 
+    log.infof("OutputManager: Settings up output arrangement for outputs '{s}'", .{arrangement_id});
+
     if (owm.config.output.getArrangement(arrangement_id)) |arrangement| {
         defer arrangement.deinit();
-        log.infof("Output arrangement found for id '{s}', setting up displays according to it", .{arrangement_id});
+        log.infof("OutputManager: Output arrangement found for outputs '{s}', setting up displays according to it", .{arrangement_id});
         for (outputs.items) |output| {
             const display_settings = arrangement.value.map.get(output.id).?;
 
             if (!display_settings.active) {
-                log.infof("Disabling output {s}", .{output.id});
+                log.infof("OutputManager: Disabling output {s}", .{output.id});
                 output.disableOutput() catch |err| {
-                    log.errf("Failed to disable output {}", .{err});
+                    log.errf("OutputManager: Failed to disable output {}", .{err});
                 };
                 continue;
             }
 
             log.infof(
-                "Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
+                "OutputManager: Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
                 .{
                     output.id,
                     display_settings.x,
@@ -118,7 +123,7 @@ pub fn setupOutputArrangement(self: *Self) void {
                     .refresh = display_settings.refresh,
                 },
             ) catch |err| {
-                log.errf("Failed to set mode and pos for output {s}: {}", .{ output.id, err });
+                log.errf("OutputManager: Failed to set mode and pos for output {s}: {}", .{ output.id, err });
                 continue;
             };
         }
@@ -141,4 +146,16 @@ pub fn setupOutputArrangement(self: *Self) void {
         }
         owm.config.output.storeArrangement(arrangement_id, arrangement);
     }
+
+    for (outputs.items) |output| {
+        if (output.is_active) {
+            owm.SERVER.seat.setCursorPos(
+                @as(f64, @floatFromInt(output.area.x + @divExact(output.area.width, 2))),
+                @as(f64, @floatFromInt(output.area.y + @divExact(output.area.height, 2))),
+            );
+            break;
+        }
+    }
+
+    owm.SERVER.scene.handleOrphanedWindows();
 }

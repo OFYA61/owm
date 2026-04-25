@@ -70,6 +70,10 @@ pub fn deinit(self: *Self) void {
     self.cursor_frame_listener.link.remove();
 }
 
+pub fn setCursorPos(self: *Self, x: f64, y: f64) void {
+    _ = self.wlr_cursor.warp(null, x, y);
+}
+
 pub fn getCursorPos(self: *Self) math.Vec2(f64) {
     return .{
         .x = self.wlr_cursor.x,

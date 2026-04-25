@@ -56,11 +56,15 @@ pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Self {
 }
 
 pub fn create(wlr_output: *wlr.Output) Error!*Self {
+    const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
+        std.mem.span(wlr_output.serial orelse wlr_output.name),
+    });
+
     const self = try owm.c_alloc.create(Self);
     errdefer owm.c_alloc.destroy(self);
 
     if (!wlr_output.initRender(owm.SERVER.wlr_allocator, owm.SERVER.wlr_renderer)) {
-        log.err("Failed to initialize render with allocator and renderer on new output");
+        log.errf("Output {s}: Failed to initialize render with allocator and renderer on new output", .{id});
         return Error.InitRenderer;
     }
 
@@ -69,7 +73,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     state.setEnabled(true);
     if (!wlr_output.modes.empty()) {
         var modes_iterator = wlr_output.modes.iterator(.forward);
-        log.info("The output has the following modes:");
+        log.infof("Output {s}: The output has the following modes:", .{id});
         while (modes_iterator.next()) |mode| {
             log.infof(
                 "\t- {}x{} {}Hz",
@@ -83,8 +87,9 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
     }
     if (wlr_output.preferredMode()) |mode| {
         log.infof(
-            "Output has the preferred mode {}x{} {}Hz",
+            "Output {s}: Has the preferred mode {}x{} {}Hz",
             .{
+                id,
                 mode.width,
                 mode.height,
                 @as(i32, @intFromFloat(@round(@as(f64, @floatFromInt(mode.refresh)) / 1000))),
@@ -93,7 +98,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         state.setMode(mode);
     }
     if (!wlr_output.commitState(&state)) {
-        log.err("Failed to commit state for new output");
+        log.errf("Output {s}: Failed to commit state for new output", .{id});
         return Error.CommitState;
     }
 
@@ -104,10 +109,6 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         return Error.CreateSceneOutput;
     };
     owm.SERVER.scene.wlr_scene_output_layout.addOutput(layout_output, scene_output); // Add the output to the scene output layout. When the layout output is repositioned, the scene output will be repositioned accordingly.
-
-    const id = try std.mem.join(owm.alloc, ":", &[_][]const u8{
-        std.mem.span(wlr_output.serial orelse wlr_output.name),
-    });
 
     const area = wlr.Box{
         .x = layout_output.x,
@@ -147,11 +148,12 @@ pub fn disableOutput(self: *Self) Error!void {
     defer state.finish();
     state.setEnabled(false);
     if (!self.wlr_output.commitState(&state)) {
-        log.errf("Failed to commit state for output {s}", .{self.id});
+        log.errf("Output {s}: Failed to commit state", .{self.id});
         return Error.CommitState;
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
     self.is_active = false;
+    self.scene.handleOutputModeChange();
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -171,12 +173,12 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
         }
     }
     if (mode == null) {
-        log.errf("The given mode {}x{} {}Hz does not exist", .{ new_mode.width, new_mode.height, new_mode.refresh });
+        log.errf("Output {s}: The given mode {}x{} {}Hz does not exist", .{ self.id, new_mode.width, new_mode.height, new_mode.refresh });
         return Error.ModeDoesNotExist;
     }
     state.setMode(mode.?);
     if (!self.wlr_output.commitState(&state)) {
-        log.errf("Failed to commit state for output {s}", .{self.id});
+        log.errf("Output {s}: Failed to commit state", .{self.id});
         return Error.CommitState;
     }
 
@@ -191,6 +193,14 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
     };
     self.recalculateWorkArea();
     self.is_active = true;
+    self.scene.handleOutputModeChange();
+}
+
+pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
+    const area = self.area;
+    const x: i32 = area.x + @divExact(area.width, 2) - @divExact(window_width, 2);
+    const y: i32 = area.y + @divExact(area.height, 2) - @divExact(window_height, 2);
+    return .{ .x = x, .y = y };
 }
 
 pub fn getRefresh(self: *Self) i32 {
@@ -205,7 +215,7 @@ pub fn isDisplay(self: *Self) bool {
 }
 
 pub fn addExclusiveZone(self: *Self, exclusive_zone: ExclusiveZone) error{OutOfMemory}!void {
-    log.infof("Output {s}: Adding exclusive zone {} {}", .{ self.id, exclusive_zone.type, exclusive_zone.size });
+    log.debugf("Output {s}: Adding exclusive zone {} {}", .{ self.id, exclusive_zone.type, exclusive_zone.size });
     try self.exclusive_zones.append(owm.alloc, exclusive_zone);
     self.recalculateWorkArea();
 }
@@ -305,13 +315,12 @@ fn recalculateWorkArea(self: *Self) void {
 
     self.work_area = new_work_area;
 
-    log.infof("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
+    log.debugf("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
 }
 
 /// Called every time when an output is ready to display a frame, generally at the refresh rate
 fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
     const self: *Self = @fieldParentPtr("frame_listener", listener);
-    _ = self;
 
     const scene_output = owm.SERVER.scene.wlr_scene.getSceneOutput(wlr_output).?;
     if (!(scene_output.output.needs_frame or pixman.Region32.notEmpty(&scene_output.private.pending_commit_damage) or scene_output.private.gamma_lut != null)) {
@@ -322,12 +331,12 @@ fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) v
     defer output_state.finish();
 
     if (!scene_output.buildState(&output_state, null)) {
-        log.err("Failed to build output state");
+        log.errf("Output {s}: Failed to build output state", .{self.id});
         return;
     }
 
     if (!wlr_output.commitState(&output_state)) {
-        log.err("Failed to commit output state");
+        log.errf("Output {s}: Failed to commit output state", .{self.id});
         return;
     }
 
@@ -353,6 +362,8 @@ fn requestStateCallback(listener: *wl.Listener(*wlr.Output.event.RequestState), 
 fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     const self: *Self = @fieldParentPtr("destroy_listener", listener);
 
+    log.debugf("Output {s}: Destroying output data", .{self.id});
+
     var should_terminate_server = true;
     if (self.isDisplay()) {
         should_terminate_server = false;
@@ -362,13 +373,11 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     self.request_state_listener.link.remove();
     self.destroy_listener.link.remove();
 
-    self.link.remove();
-
-    // TODO: handle orphaned windows
     if (!should_terminate_server) {
         owm.SERVER.scene.removeOutputScene(self);
     }
 
+    self.link.remove();
     owm.c_alloc.destroy(self);
 
     if (should_terminate_server) {

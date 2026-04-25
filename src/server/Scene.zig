@@ -47,7 +47,7 @@ pub const OutputScene = struct {
 
     pub inline fn enableWorkspace(self: *OutputScene, idx: usize) void {
         if (idx >= self.workspaces.items.len) {
-            log.errf("Tried to enable non-existent workspace {}. Only {} workspaces exist", .{ idx, self.workspaces.items.len });
+            log.errf("OuptutScene {s}: Tried to enable non-existent workspace {}. Only {} workspaces exist", .{ self.output.id, idx, self.workspaces.items.len });
             return;
         }
         self.workspaces.items[idx].root.node.setEnabled(true);
@@ -100,7 +100,7 @@ pub const OutputScene = struct {
             var next_idx: usize = self.workspaces.items.len;
             while (next_idx <= target_workspace_idx) : (next_idx += 1) {
                 self.newWorkspace() catch {
-                    log.err("Failed to create new workspace while tyring to move window to it");
+                    log.errf("OutputScene {s}: Failed to create new workspace while trying to move window to it", .{self.output.id});
                     return;
                 };
             }
@@ -114,6 +114,42 @@ pub const OutputScene = struct {
 
     pub fn getTopWindowInWorkspace(self: *OutputScene) ?*Window {
         return self.getCurrentWorkspace().windows.first();
+    }
+
+    /// When an outputs mode is changes, the windows in it's scene viewport are potentially
+    /// not in view anymore. Move them into view if they're outside of the viewport
+    /// of the output.
+    pub fn handleOutputModeChange(self: *OutputScene) void {
+        if (!self.output.is_active) {
+            log.debugf("OutputScene {s}: Output is disabled, marking owned windows as orphan", .{self.output.id});
+            // TODO: collect owned windows as orphan windows
+            return;
+        }
+        log.debugf("OutputScene {s}: Moving windows belonging to output into viewport post mode change", .{self.output.id});
+
+        const output_area = self.output.area;
+        for (self.workspaces.items) |*workspace| {
+            var window_iter = workspace.windows.iterator(.forward);
+            while (window_iter.next()) |window| {
+                const window_pos = window.getPos();
+                const window_geom = window.getGeom();
+                const geom: wlr.Box = .{
+                    .x = window_pos.x,
+                    .y = window_pos.y,
+                    .width = window_geom.width,
+                    .height = window_geom.height,
+                };
+                var intersection: wlr.Box = undefined;
+                _ = wlr.Box.intersection(&intersection, &output_area, &geom);
+                if (intersection.width <= 0 or intersection.height <= 0) {
+                    log.debugf("OutputScene {s}: Window {*} is not in viewport, moving", .{ self.output.id, window });
+                    const new_window_coords = self.output.getCenterPosForWindow(geom.width, geom.height);
+                    window.setPos(new_window_coords.x, new_window_coords.y);
+                }
+            }
+        }
+
+        log.debugf("OutputScene {s}: Completed moving windows to viewport", .{self.output.id});
     }
 };
 
@@ -183,13 +219,15 @@ pub fn createOutputScene(self: *Self, output: *Output) !*OutputScene {
 }
 
 pub fn removeOutputScene(self: *Self, output: *Output) void {
-    for (self.output_scenes.items, 0..) |os, idx| {
-        if (os.output == output) {
-            _ = self.output_scenes.swapRemove(idx);
-            return;
-        }
+    log.debugf("Scene: Removing output {s} from the scene", .{output.id});
+    for (self.output_scenes.items, 0..) |*os, idx| {
+        if (os.output != output) continue;
+        // TODO: collect windows owned by this output into orphaned windows
+        os.root.node.destroy();
+        _ = self.output_scenes.swapRemove(idx);
+        return;
     }
-    log.err("Tried to remove OutputScene for an unknown output");
+    log.err("Scene: Tried to remove OutputScene for an unknown output");
 }
 
 pub fn getLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
@@ -241,4 +279,33 @@ pub fn surfaceAt(self: *Self, lx: f64, ly: f64) ?SurfaceAtResponse {
     }
 
     return null;
+}
+
+/// Must be called after arranging a set of outputs. In case we've had an output removed,
+/// we'll have a list of orphaned windows. These should get moved into the view of another output.
+/// We move them to the first available outputs viewport.
+pub fn handleOrphanedWindows(self: *Self) void {
+    if (self.orphaned_windows.items.len == 0 or self.output_scenes.items.len == 0) return;
+
+    var output_scene = self.output_scenes.items[0];
+    log.debugf("Scene: Moving orphaned windows to output {s}", .{output_scene.output.id});
+
+    for (self.orphaned_windows.items) |*orphan_window| {
+        // Make sure the workspace idx exists
+        // Add to workspace
+        if (orphan_window.workspace_idx >= output_scene.workspaces.items.len) {
+            var next_idx: usize = output_scene.workspaces.items.len;
+            while (next_idx <= orphan_window.workspace_idx) : (next_idx += 1) {
+                output_scene.newWorkspace() catch {
+                    log.err("Failed to create new workspace while tyring to move orphaned window to it");
+                    return;
+                };
+            }
+        }
+
+        // TODO: move orphaned window to the selected output_scene
+    }
+
+    log.debugf("Scene: Moved orphaned windows to output {s}", .{output_scene.output.id});
+    self.orphaned_windows.clearAndFree(owm.alloc);
 }

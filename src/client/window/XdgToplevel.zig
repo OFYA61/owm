@@ -61,10 +61,8 @@ pub fn setup(self: *Self) void {
     self.wlr_xdg_toplevel.events.request_maximize.add(&self.request_maximize_listener);
     self.wlr_xdg_toplevel.events.request_fullscreen.add(&self.request_fullscreen_listener);
 
-    const work_area = self.current_output.area;
-    const spawn_x = work_area.x + @divExact(work_area.width, 2) - @divExact(SPAWN_SIZE_X, 2);
-    const spawn_y = work_area.y + @divExact(work_area.height, 2) - @divExact(SPAWN_SIZE_Y, 2);
-    self.setPos(spawn_x, spawn_y);
+    const spawn_coords = self.current_output.getCenterPosForWindow(SPAWN_SIZE_X, SPAWN_SIZE_Y);
+    self.setPos(spawn_coords.x, spawn_coords.y);
 }
 
 pub fn getWlrSurface(self: *Self) *wlr.Surface {
@@ -102,6 +100,12 @@ pub fn setSize(self: *Self, new_width: i32, new_height: i32) void {
 
 pub fn getGeom(self: *Self) wlr.Box {
     return self.wlr_xdg_toplevel.base.geometry;
+    // return .{
+    //     .x = self.x,
+    //     .y = self.y,
+    //     .width = self.wlr_xdg_toplevel.base.geometry.width,
+    //     .height = self.wlr_xdg_toplevel.base.geometry.height,
+    // };
 }
 
 pub fn toggleMaximize(self: *Self) void {
