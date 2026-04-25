@@ -60,6 +60,7 @@ modifiers, keycode, action, action_args
     - [x] Move windows between workspaces
     - [ ] Cleanup workspaces on output destroy
     - [ ] Move destroyed outputs windows to another outputs workspaces
+    - [ ] Implement `ext-workspace-v1` protocol
 - [ ] Finish implementing `wlr-layer-shell` protocol
     - [ ] Handle status bar positioning on all 4 sides
     - [ ] Launchers and App Menus
