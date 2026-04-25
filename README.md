@@ -24,6 +24,7 @@ Commands:
 - Alt + m: Maximize window
 - Alt + F1: "Alt Tab"
 - Alt + [0-9]: switch workspaces
+- Alt + Shift + [0-9]: move windows between workspaces
 
 ## Logs
 
