@@ -60,6 +60,9 @@ pub fn init(self: *Self, wlr_backend: *wlr.Backend, wlr_output_layout: *wlr.Outp
 }
 
 pub fn deinit(self: *Self) void {
+    log.debug("Seat: Cleaning up");
+    self.focused_window = null;
+
     self.new_input_listener.link.remove();
     self.request_set_cursor_listener.link.remove();
     self.request_set_selection_listener.link.remove();
@@ -68,6 +71,10 @@ pub fn deinit(self: *Self) void {
     self.cursor_button_listener.link.remove();
     self.cursor_axis_listener.link.remove();
     self.cursor_frame_listener.link.remove();
+}
+
+pub fn setCursorPos(self: *Self, x: f64, y: f64) void {
+    _ = self.wlr_cursor.warp(null, x, y);
 }
 
 pub fn getCursorPos(self: *Self) math.Vec2(f64) {

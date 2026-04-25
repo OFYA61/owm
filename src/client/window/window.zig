@@ -95,6 +95,24 @@ pub const Window = struct {
         }
     }
 
+    pub fn destroySceneTree(self: *Self) void {
+        var scene_tree: *wlr.SceneTree = undefined;
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                scene_tree = t.wlr_scene_tree;
+            },
+            .xwayland => |*xw| {
+                if (xw.wlr_scene_tree) |wst| {
+                    scene_tree = wst;
+                } else {
+                    return;
+                }
+            },
+        }
+
+        scene_tree.node.destroy();
+    }
+
     pub fn setFocus(self: *Self, focus: bool) void {
         switch (self.window) {
             .xdg_toplevel => |*t| {
@@ -172,6 +190,23 @@ pub const Window = struct {
         scene_tree.node.setEnabled(false);
         scene_tree.node.setEnabled(true);
         scene_tree.node.raiseToTop();
+    }
+
+    pub fn recreateSurface(self: *Self, new_parent: *wlr.SceneTree) void {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                t.wlr_scene_tree = new_parent.createSceneXdgSurface(t.wlr_xdg_toplevel.base) catch {
+                    log.err("Window: Faile dto create SceneSubsurfaceTree for XdgToplevel");
+                    return;
+                };
+            },
+            .xwayland => |*xw| {
+                xw.wlr_scene_tree = new_parent.createSceneSubsurfaceTree(xw.wlr_xwayland_surface.surface.?) catch {
+                    log.err("Window: Faile dto create SceneSubsurfaceTree for Xwayland");
+                    return;
+                };
+            },
+        }
     }
 
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {

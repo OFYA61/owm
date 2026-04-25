@@ -85,8 +85,8 @@ pub fn setSize(self: *Self, new_width: u16, new_height: u16) void {
 
 pub fn getGeom(self: *Self) wlr.Box {
     return .{
-        .x = self.x,
-        .y = self.y,
+        .x = @as(i32, @intCast(self.wlr_xwayland_surface.x)),
+        .y = @as(i32, @intCast(self.wlr_xwayland_surface.y)),
         .width = @as(i32, @intCast(self.wlr_xwayland_surface.width)),
         .height = @as(i32, @intCast(self.wlr_xwayland_surface.height)),
     };
