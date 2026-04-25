@@ -131,7 +131,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             .NextWindow => {
                 if (self.seat.focused_window) |_| {
                     if (self.outputAtCursor()) |output| {
-                        if (output.switchToNextWindowInWorkspace()) |next_window| {
+                        if (output.sceneSwitchToNextWindow()) |next_window| {
                             self.seat.focusWindow(next_window);
                         }
                     }
@@ -141,7 +141,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             },
             .SwitchWorkspace => |idx| {
                 if (self.outputAtCursor()) |output| {
-                    output.switchWorkspace(idx - 1);
+                    output.sceneSwitchWorkspace(idx - 1);
                 }
             },
             .MoveWindowToWorkspace => |idx| {

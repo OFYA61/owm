@@ -171,7 +171,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
             },
         },
     };
-    try self.createWorkspace();
+    try self.sceneCreateWorkspace();
     self.getCurrentWorkspace().setEnabled(true);
 
     wlr_output.data = self;
@@ -370,7 +370,7 @@ fn recalculateWorkArea(self: *Self) void {
 //////////////////////////////////
 
 /// Creats and appends a workspace to the list of workspaces, disabled by default
-pub fn createWorkspace(self: *Self) !void {
+pub fn sceneCreateWorkspace(self: *Self) !void {
     var scene = &self.scene;
     try scene.workspaces.append(
         owm.alloc,
@@ -382,7 +382,7 @@ pub fn createWorkspace(self: *Self) !void {
     log.debugf("Output {s}: Created workspace {}", .{ self.id, scene.workspaces.items.len });
 }
 
-pub fn switchWorkspace(self: *Self, idx: usize) void {
+pub fn sceneSwitchWorkspace(self: *Self, idx: usize) void {
     var scene = &self.scene;
     if (idx >= scene.workspaces.items.len) {
         return;
@@ -393,18 +393,18 @@ pub fn switchWorkspace(self: *Self, idx: usize) void {
     self.damageWhole();
 }
 
-pub inline fn getCurrentWorkspaceRoot(self: *Self) *wlr.SceneTree {
+pub inline fn sceneGetCurrentRoot(self: *Self) *wlr.SceneTree {
     return self.getCurrentWorkspace().root;
 }
 
-pub fn addWindowToCurrentWorkspace(self: *Self, window: *Window) void {
+pub fn sceneAddWindow(self: *Self, window: *Window) void {
     self.getCurrentWorkspace().windows.prepend(window);
-    window.setSceneTreeParent(self.getCurrentWorkspaceRoot());
+    window.setSceneTreeParent(self.sceneGetCurrentRoot());
 }
 
-/// Puts the topmost window at the end of the list and returns the new top window.
+/// Puts the topmost window at the end of the list and returns the new top window in the current workspace
 /// Also known as `Alt+Tab`
-pub fn switchToNextWindowInWorkspace(self: *Self) ?*Window {
+pub fn sceneSwitchToNextWindow(self: *Self) ?*Window {
     var workspace = self.getCurrentWorkspace();
     if (workspace.windows.first()) |first_window| {
         first_window.link.remove();
@@ -414,11 +414,11 @@ pub fn switchToNextWindowInWorkspace(self: *Self) ?*Window {
     return null;
 }
 
-pub fn getTopWindowInWorkspace(self: *Self) ?*Window {
+pub fn sceneGetTopWindow(self: *Self) ?*Window {
     return self.getCurrentWorkspace().windows.first();
 }
 
-pub fn getLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
+pub fn sceneGetLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
     const scene = &self.scene;
     switch (layer) {
         .background => return scene.layers.background,

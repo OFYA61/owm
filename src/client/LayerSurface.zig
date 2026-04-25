@@ -27,7 +27,7 @@ pub fn create(wlr_layer_surface: *wlr.LayerSurfaceV1) client.Error!*Self {
 
     const scene_tree = owm.server.Output
         .fromOpaquePtr(wlr_layer_surface.output.?.data).?
-        .getLayerSurfaceTree(wlr_layer_surface.current.layer)
+        .sceneGetLayerSurfaceTree(wlr_layer_surface.current.layer)
         .createSceneLayerSurfaceV1(wlr_layer_surface) catch {
         log.err("Failed to create scene tree for LayerSurface");
         return client.Error.FailedToCreateSceneTree;

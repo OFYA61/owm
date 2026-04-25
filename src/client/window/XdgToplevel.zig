@@ -39,7 +39,7 @@ pub fn create(xdg_toplevel_window: *Window, wlr_xdg_toplevel: *wlr.XdgToplevel) 
         return client.Error.CursorNotOnOutput;
     };
 
-    const scene_tree = output.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
+    const scene_tree = output.sceneGetCurrentRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
         log.err("XdgToplevel : Failed to create scene tree for XdgToplevel");
         return client.Error.FailedToCreateSceneTree;
     };
@@ -153,7 +153,7 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    toplevel.current_output.addWindowToCurrentWorkspace(xdg_toplevel_window);
+    toplevel.current_output.sceneAddWindow(xdg_toplevel_window);
     owm.SERVER.seat.focusWindow(xdg_toplevel_window);
 }
 

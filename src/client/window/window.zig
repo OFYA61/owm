@@ -213,12 +213,12 @@ pub const Window = struct {
         switch (self.window) {
             .xdg_toplevel => |*t| {
                 t.current_output = output;
-                output.addWindowToCurrentWorkspace(self);
+                output.sceneAddWindow(self);
             },
             .xwayland => |*xw| {
                 xw.current_output = output;
                 if (xw.wlr_scene_tree) |_| {
-                    output.addWindowToCurrentWorkspace(self);
+                    output.sceneAddWindow(self);
                 }
             },
         }
