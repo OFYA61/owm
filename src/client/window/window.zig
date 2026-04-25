@@ -20,7 +20,6 @@ pub const Window = struct {
     window: WindowType,
 
     pub fn newXdgToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!*Self {
-        log.info("New XdgToplevel");
         var window = try owm.c_alloc.create(Self);
         errdefer owm.c_alloc.destroy(window);
 
@@ -210,15 +209,16 @@ pub const Window = struct {
     }
 
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
+        self.link.remove();
         switch (self.window) {
             .xdg_toplevel => |*t| {
                 t.current_output = output;
-                t.wlr_scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
+                output.addWindowToCurrentWorkspace(self);
             },
             .xwayland => |*xw| {
                 xw.current_output = output;
-                if (xw.wlr_scene_tree) |scene_tree| {
-                    scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
+                if (xw.wlr_scene_tree) |_| {
+                    output.addWindowToCurrentWorkspace(self);
                 }
             },
         }

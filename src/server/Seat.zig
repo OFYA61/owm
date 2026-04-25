@@ -91,7 +91,7 @@ pub fn resetCursorMode(self: *Self) void {
 
 pub fn focusTopWindow(self: *Self) void {
     if (owm.SERVER.outputAtCursor()) |output| {
-        if (output.scene.getTopWindowInWorkspace()) |top_window| {
+        if (output.getTopWindowInWorkspace()) |top_window| {
             self.focusWindow(top_window);
         }
     }

@@ -49,7 +49,7 @@ pub fn setFocus(self: *Self, focus: bool) void {
     if (focus) {
         if (self.wlr_scene_tree) |scene_tree| {
             scene_tree.node.raiseToTop();
-            self.current_output.scene.raiseWindowToTopOfWorkspace(Window.from(self));
+            self.current_output.raiseWindowToTopOfWorkspace(Window.from(self));
         }
     }
 }
@@ -132,7 +132,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     surface.events.commit.add(&xwayland.commit_listener);
     xwayland.wlr_scene_tree =
-        xwayland.current_output.scene.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
+        xwayland.current_output.getCurrentWorkspaceRoot().createSceneSubsurfaceTree(surface) catch {
             log.err("XWayland: Failed to create subsurface");
             return;
         };
@@ -141,7 +141,7 @@ fn mapCallback(listener: *wl.Listener(void)) void {
 
     const xwayland_window = Window.from(xwayland);
     xwayland.wlr_scene_tree.?.node.data = xwayland_window;
-    xwayland.current_output.scene.addWindowToCurrentWorkspace(xwayland_window);
+    xwayland.current_output.addWindowToCurrentWorkspace(xwayland_window);
     owm.SERVER.seat.focusWindow(xwayland_window);
 }
 
