@@ -167,9 +167,11 @@ pub const Window = struct {
                 }
             },
         }
+
         scene_tree.node.reparent(new_parent);
         scene_tree.node.setEnabled(false);
         scene_tree.node.setEnabled(true);
+        scene_tree.node.raiseToTop();
     }
 
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
