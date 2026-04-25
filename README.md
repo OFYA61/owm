@@ -55,8 +55,8 @@ modifiers, keycode, action, action_args
 
 - [x] Keybindings
 - [ ] Workspaces
-    - [ ] Create worksapces
-    - [ ] Move windows between workspaces
+    - [x] Create worksapces
+    - [x] Move windows between workspaces
     - [ ] Cleanup workspaces on output destroy
     - [ ] Move destroyed outputs windows to another outputs workspaces
 - [ ] Finish implementing `wlr-layer-shell` protocol
