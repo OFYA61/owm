@@ -44,7 +44,10 @@ concatinated with `:`. You can modify the position, resolution, and refresh rate
 ### Keybinds
 
 The keybinds file can be found in `$HOME/.config/owm/keybind/keybinds`. If one doesnt' exist, on startup it'll get created with the default values.
-See the default keybinds at `./src/config/Keybinds.zig` to see how to configure keybinds.
+See the default keybinds at `./src/config/Keybinds.zig` to see how to configure keybinds. Sample syntax
+```
+modifiers, keycode, action, action_args
+```
 
 **TODO**: Write docs around keybinds.
 

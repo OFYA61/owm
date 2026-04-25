@@ -40,16 +40,26 @@ pub const OutputScene = struct {
         try self.workspaces.append(owm.alloc, Workspace{
             .root = try self.root.createSceneTree(),
         });
-        self.workspaces.items[self.workspaces.items.len - 1].windows.init();
+        var new_workspace = &self.workspaces.items[self.workspaces.items.len - 1];
+        new_workspace.windows.init();
+        new_workspace.root.node.setEnabled(false);
+    }
+
+    pub inline fn enableWorkspace(self: *OutputScene, idx: usize) void {
+        if (idx >= self.workspaces.items.len) {
+            log.errf("Tried to enable non-existent workspace {}. Only {} workspaces exist", .{ idx, self.workspaces.items.len });
+            return;
+        }
+        self.workspaces.items[idx].root.node.setEnabled(true);
     }
 
     pub fn switchWorkspace(self: *OutputScene, new_workspace_idx: usize) void {
         if (new_workspace_idx >= self.workspaces.items.len) {
             return;
         }
-        self.getCurrentWorkspaceRoot().node.enabled = false;
+        self.getCurrentWorkspaceRoot().node.setEnabled(false);
         self.current_workspace_idx = new_workspace_idx;
-        self.getCurrentWorkspaceRoot().node.enabled = true;
+        self.getCurrentWorkspaceRoot().node.setEnabled(true);
         self.output.damageWhole();
     }
 
@@ -82,6 +92,26 @@ pub const OutputScene = struct {
         return null;
     }
 
+    /// Moves a window from its current workspace to a different target workspace.
+    /// If the window is already in the target workspace, it is removed first.
+    pub fn moveWindowToWorkspace(self: *OutputScene, window: *Window, target_workspace_idx: usize) void {
+        // Create intermediate workspaces if the target workspace doesn't exist yet
+        if (target_workspace_idx >= self.workspaces.items.len) {
+            var next_idx: usize = self.workspaces.items.len;
+            while (next_idx <= target_workspace_idx) : (next_idx += 1) {
+                self.newWorkspace() catch {
+                    log.err("Failed to create new workspace while tyring to move window to it");
+                    return;
+                };
+            }
+        }
+
+        window.link.remove();
+        var target_workspace = &self.workspaces.items[target_workspace_idx];
+        window.setSceneTreeParent(target_workspace.root);
+        target_workspace.windows.prepend(window);
+    }
+
     pub fn getTopWindowInWorkspace(self: *OutputScene) ?*Window {
         return self.getCurrentWorkspace().windows.first();
     }
@@ -104,8 +134,8 @@ layers: struct {
     background: *wlr.SceneTree,
     /// `bottom` layer shell surfaces
     bottom: *wlr.SceneTree,
-    /// `XdgShell` and `Xwayland` surfaces
-    workspace: *wlr.SceneTree,
+    /// Root node for anchoring the workspaces of outputs
+    outputs_root: *wlr.SceneTree,
     /// `top` layer shell surfaces
     top: *wlr.SceneTree,
     /// `overlay` layer shell surfaces
@@ -127,7 +157,7 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
         .layers = .{
             .background = try root.createSceneTree(),
             .bottom = try root.createSceneTree(),
-            .workspace = try root.createSceneTree(),
+            .outputs_root = try root.createSceneTree(),
             .top = try root.createSceneTree(),
             .overlay = try root.createSceneTree(),
             .popups = try root.createSceneTree(),
@@ -144,12 +174,10 @@ pub fn deinit(self: *Self) void {
 pub fn createOutputScene(self: *Self, output: *Output) !*OutputScene {
     var output_scene = OutputScene{
         .output = output,
-        .root = try self.layers.workspace.createSceneTree(),
+        .root = try self.layers.outputs_root.createSceneTree(),
     };
     try output_scene.newWorkspace();
-    // TODO: adding 2 workspaces for now for testing purposes, remove this in the future when workspaces get created via user actions
-    try output_scene.newWorkspace();
-    output_scene.workspaces.items[1].root.node.enabled = false;
+    output_scene.enableWorkspace(0);
     try self.output_scenes.append(owm.alloc, output_scene);
     return &self.output_scenes.items[self.output_scenes.items.len - 1];
 }
