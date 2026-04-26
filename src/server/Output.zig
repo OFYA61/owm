@@ -200,7 +200,7 @@ pub fn disableOutput(self: *Self) Error!void {
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
     self.is_active = false;
-    // TODO: &self.scene.handleOutputModeChange();
+    self.sceneHandleModeChange();
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -240,7 +240,8 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
     };
     self.recalculateWorkArea();
     self.is_active = true;
-    // TODO: &self.scene.handleOutputModeChange();
+
+    self.sceneHandleModeChange();
 }
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
@@ -402,25 +403,75 @@ pub fn sceneAddWindow(self: *Self, window: *Window) void {
     window.setSceneTreeParent(self.sceneGetCurrentRoot());
 }
 
-pub fn sceneMoveWindowToWorkspace(self: *Self, window: *Window, target_workspace_idx: usize) void {
+pub fn sceneMoveWindowToWorkspace(
+    self: *Self,
+    window: *Window,
+    target_workspace_idx: usize,
+    remove_window_link: bool,
+) void {
     const scene = &self.scene;
     // Create intermediate workspaces if the target workspace doesn't exist yet
     if (target_workspace_idx >= scene.workspaces.items.len) {
         var next_idx: usize = scene.workspaces.items.len;
         while (next_idx <= target_workspace_idx) : (next_idx += 1) {
             self.sceneCreateWorkspace() catch {
-                log.errf("Output {s}: Failed to create new workspace while trying to move window to it", .{self.id});
+                log.errf(
+                    "Output {s}: Failed to create new workspace while trying to move window to it",
+                    .{self.id},
+                );
                 return;
             };
         }
     }
 
-    window.link.remove();
+    if (remove_window_link) {
+        window.link.remove();
+    }
     var target_workspace = &scene.workspaces.items[target_workspace_idx];
     window.setSceneTreeParent(target_workspace.root);
     target_workspace.windows.prepend(window);
 
     log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx });
+}
+
+fn sceneHandleModeChange(self: *Self) void {
+    if (!self.is_active) {
+        log.debugf("Output {s}: Deactivated, marking orphaning windows", .{self.id});
+        self.sceneOrphanWindows();
+        return;
+    }
+
+    log.debugf("Output {s}: Moving windows belonging to output into viewport", .{self.id});
+    for (self.scene.workspaces.items) |*workspace| {
+        var window_iter = workspace.windows.iterator(.forward);
+        while (window_iter.next()) |window| {
+            const window_pos = window.getPos();
+            const window_geom = window.getGeom();
+            const geom: wlr.Box = .{
+                .x = window_pos.x,
+                .y = window_pos.y,
+                .width = window_geom.width,
+                .height = window_geom.height,
+            };
+            var intersection: wlr.Box = undefined;
+            _ = wlr.Box.intersection(&intersection, &self.area, &geom);
+            if (intersection.width <= 0 or intersection.height <= 0) {
+                log.debugf("Output {s}: Window is not in viewport, moving", .{self.id});
+                const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
+                window.setPos(new_window_coords.x, new_window_coords.y);
+            }
+        }
+    }
+}
+
+fn sceneOrphanWindows(self: *Self) void {
+    for (self.scene.workspaces.items, 0..) |*workspace, idx| {
+        var window_iter = workspace.windows.iterator(.forward);
+        while (window_iter.next()) |window| {
+            owm.SERVER.scene.storeOrphanWindow(window, idx);
+            window.link.remove();
+        }
+    }
 }
 
 /// Puts the topmost window at the end of the list and returns the new top window in the current workspace
@@ -523,7 +574,7 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     self.is_active = false;
 
     if (!should_terminate_server) {
-        // TODO: store orphaned windows
+        self.sceneOrphanWindows();
         self.scene.root.node.destroy();
     }
 

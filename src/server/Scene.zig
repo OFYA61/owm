@@ -1,3 +1,5 @@
+//! Reprezents the root of the scene. Contains methods to grab the surfaces located at certain points and handles orphaned windows.
+
 const Self = @This();
 
 const std = @import("std");
@@ -91,6 +93,16 @@ pub fn surfaceAt(self: *Self, lx: f64, ly: f64) ?SurfaceAtResponse {
     }
 
     return null;
+}
+
+pub fn storeOrphanWindow(self: *Self, window: *Window, workspace_idx: usize) void {
+    self.orphaned_windows.append(
+        owm.alloc,
+        OrphanWindow{
+            .window = window,
+            .workspace_idx = workspace_idx,
+        },
+    ) catch unreachable;
 }
 
 /// Must be called after arranging a set of outputs. In case we've had an output removed,
