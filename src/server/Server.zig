@@ -69,6 +69,8 @@ pub fn init(self: *Self) anyerror!void {
         .wlr_xwayland = wlr_xwayland,
     };
 
+    self.scene.init();
+
     _ = try wl_server.addSocketAuto(&self.wl_socket);
 
     try self.wlr_renderer.initServer(wl_server);
@@ -147,7 +149,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             .MoveWindowToWorkspace => |idx| {
                 if (self.seat.focused_window) |window| {
                     if (self.outputAtCursor()) |output| {
-                        output.sceneMoveWindowToWorkspace(window, idx - 1, true);
+                        output.sceneMoveWindowToWorkspace(window, idx - 1);
                         window.setFocus(false);
                         self.seat.clearFocusIfFocusedWindow(window);
                     }

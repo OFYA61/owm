@@ -191,23 +191,6 @@ pub const Window = struct {
         scene_tree.node.raiseToTop();
     }
 
-    pub fn recreateSurface(self: *Self, new_parent: *wlr.SceneTree) void {
-        switch (self.window) {
-            .xdg_toplevel => |*t| {
-                t.wlr_scene_tree = new_parent.createSceneXdgSurface(t.wlr_xdg_toplevel.base) catch {
-                    log.err("Window: Faile dto create SceneSubsurfaceTree for XdgToplevel");
-                    return;
-                };
-            },
-            .xwayland => |*xw| {
-                xw.wlr_scene_tree = new_parent.createSceneSubsurfaceTree(xw.wlr_xwayland_surface.surface.?) catch {
-                    log.err("Window: Faile dto create SceneSubsurfaceTree for Xwayland");
-                    return;
-                };
-            },
-        }
-    }
-
     pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
         self.link.remove();
         switch (self.window) {

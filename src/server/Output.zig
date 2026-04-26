@@ -200,7 +200,7 @@ pub fn disableOutput(self: *Self) Error!void {
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
     self.is_active = false;
-    self.sceneHandleModeChange();
+    self.sceneEnsureWindowsInViewport();
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -241,7 +241,7 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
     self.recalculateWorkArea();
     self.is_active = true;
 
-    self.sceneHandleModeChange();
+    self.sceneEnsureWindowsInViewport();
 }
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
@@ -398,35 +398,34 @@ pub inline fn sceneGetCurrentRoot(self: *Self) *wlr.SceneTree {
     return self.getCurrentWorkspace().root;
 }
 
+pub inline fn sceneGetRoot(self: *Self, idx: usize) *wlr.SceneTree {
+    return self.scene.workspaces.items[idx].root;
+}
+
 pub fn sceneAddWindow(self: *Self, window: *Window) void {
     self.getCurrentWorkspace().windows.prepend(window);
     window.setSceneTreeParent(self.sceneGetCurrentRoot());
 }
 
-pub fn sceneMoveWindowToWorkspace(
-    self: *Self,
-    window: *Window,
-    target_workspace_idx: usize,
-    remove_window_link: bool,
-) void {
+/// Ensures that the workspaces up until the given `idx` exists, if not, it creates them on the spot
+pub fn ensureWorkspacesExist(self: *Self, idx: usize) void {
     const scene = &self.scene;
-    // Create intermediate workspaces if the target workspace doesn't exist yet
-    if (target_workspace_idx >= scene.workspaces.items.len) {
-        var next_idx: usize = scene.workspaces.items.len;
-        while (next_idx <= target_workspace_idx) : (next_idx += 1) {
-            self.sceneCreateWorkspace() catch {
-                log.errf(
-                    "Output {s}: Failed to create new workspace while trying to move window to it",
-                    .{self.id},
-                );
-                return;
-            };
-        }
-    }
+    if (idx < scene.workspaces.items.len) return;
 
-    if (remove_window_link) {
-        window.link.remove();
+    var next_idx: usize = scene.workspaces.items.len;
+    while (next_idx <= idx) : (next_idx += 1) {
+        self.sceneCreateWorkspace() catch {
+            log.errf("Output {s}: Failed to create new workspace", .{self.id});
+            return;
+        };
     }
+}
+
+pub fn sceneMoveWindowToWorkspace(self: *Self, window: *Window, target_workspace_idx: usize) void {
+    const scene = &self.scene;
+    self.ensureWorkspacesExist(target_workspace_idx);
+
+    window.link.remove();
     var target_workspace = &scene.workspaces.items[target_workspace_idx];
     window.setSceneTreeParent(target_workspace.root);
     target_workspace.windows.prepend(window);
@@ -434,7 +433,7 @@ pub fn sceneMoveWindowToWorkspace(
     log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx });
 }
 
-fn sceneHandleModeChange(self: *Self) void {
+pub fn sceneEnsureWindowsInViewport(self: *Self) void {
     if (!self.is_active) {
         log.debugf("Output {s}: Deactivated, marking orphaning windows", .{self.id});
         self.sceneOrphanWindows();
@@ -456,22 +455,26 @@ fn sceneHandleModeChange(self: *Self) void {
             var intersection: wlr.Box = undefined;
             _ = wlr.Box.intersection(&intersection, &self.area, &geom);
             if (intersection.width <= 0 or intersection.height <= 0) {
-                log.debugf("Output {s}: Window is not in viewport, moving", .{self.id});
+                log.debugf("Output {s}: Window {*} is not in viewport, moving", .{ self.id, window });
                 const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
                 window.setPos(new_window_coords.x, new_window_coords.y);
+                log.debugf("Output {s}: Window {*} moved to viewport", .{ self.id, window });
             }
         }
     }
+    log.debugf("Output {s}: Moved windows belonging to output into viewport", .{self.id});
 }
 
 fn sceneOrphanWindows(self: *Self) void {
+    log.debugf("Output {s}: Marking owned windows as orphan", .{self.id});
+    var count: usize = 0;
     for (self.scene.workspaces.items, 0..) |*workspace, idx| {
         var window_iter = workspace.windows.iterator(.forward);
-        while (window_iter.next()) |window| {
+        while (window_iter.next()) |window| : (count += 1) {
             owm.SERVER.scene.storeOrphanWindow(window, idx);
-            window.link.remove();
         }
     }
+    log.debugf("Output {s}: Marked {} owned windows as orphan", .{ self.id, count });
 }
 
 /// Puts the topmost window at the end of the list and returns the new top window in the current workspace
