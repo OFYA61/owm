@@ -245,11 +245,9 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
 }
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
-    log.debug("MATHING");
     const area = self.area;
     const x: i32 = area.x + @divExact(area.width, 2) - @divExact(window_width, 2);
     const y: i32 = area.y + @divExact(area.height, 2) - @divExact(window_height, 2);
-    log.debug("MATHING COMPLETE");
     return .{ .x = x, .y = y };
 }
 
