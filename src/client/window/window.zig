@@ -94,24 +94,6 @@ pub const Window = struct {
         }
     }
 
-    pub fn destroySceneTree(self: *Self) void {
-        var scene_tree: *wlr.SceneTree = undefined;
-        switch (self.window) {
-            .xdg_toplevel => |*t| {
-                scene_tree = t.wlr_scene_tree;
-            },
-            .xwayland => |*xw| {
-                if (xw.wlr_scene_tree) |wst| {
-                    scene_tree = wst;
-                } else {
-                    return;
-                }
-            },
-        }
-
-        scene_tree.node.destroy();
-    }
-
     pub fn setFocus(self: *Self, focus: bool) void {
         switch (self.window) {
             .xdg_toplevel => |*t| {
