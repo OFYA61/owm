@@ -1,5 +1,6 @@
 //! Represents a display output in the Wayland compositor.
-//! Manages output geometry, frame callbacks, state requests, and destruction events.
+//! Manages output geometry, output scene (everything that gets rendered on it),
+//! frame callbacks, state requests, and destruction events.
 pub const Self = @This();
 
 const std = @import("std");
@@ -7,27 +8,22 @@ const posix = @import("std").posix;
 
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
+const zwlr = @import("wayland").server.zwlr;
 const pixman = @import("pixman");
 
 const owm = @import("root").owm;
 const log = owm.log;
 
-const OutputScene = @import("Scene.zig").OutputScene;
+const Window = owm.client.window.Window;
 
-id: []u8,
-wlr_output: *wlr.Output,
-wlr_layout_output: *wlr.OutputLayout.Output,
-wlr_scene_output: *wlr.SceneOutput,
-area: wlr.Box,
-work_area: wlr.Box,
-link: wl.list.Link = undefined,
-exclusive_zones: std.ArrayList(ExclusiveZone) = .empty,
-scene: *OutputScene,
-is_active: bool = true,
+const Workspace = struct {
+    root: *wlr.SceneTree,
+    windows: wl.list.Head(Window, .link) = undefined,
 
-frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
-request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
-destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
+    inline fn setEnabled(self: *Workspace, enabled: bool) void {
+        self.root.node.setEnabled(enabled);
+    }
+};
 
 pub const ExclusiveZone = struct {
     type: Type,
@@ -50,6 +46,43 @@ pub const Error = error{
     ModeDoesNotExist,
     OutOfMemory,
 };
+
+id: []u8,
+wlr_output: *wlr.Output,
+wlr_layout_output: *wlr.OutputLayout.Output,
+wlr_scene_output: *wlr.SceneOutput,
+area: wlr.Box,
+work_area: wlr.Box,
+link: wl.list.Link = undefined,
+exclusive_zones: std.ArrayList(ExclusiveZone) = .empty,
+
+scene: struct {
+    const Scene = @This();
+    root: *wlr.SceneTree,
+    layers: struct {
+        /// `background` layer shell surfaces
+        background: *wlr.SceneTree,
+        /// `bottom` layer shell surfaces
+        bottom: *wlr.SceneTree,
+        /// Root node for anchoring the workspaces
+        workspaces_root: *wlr.SceneTree,
+        /// `top` layer shell surfaces
+        top: *wlr.SceneTree,
+        /// `overlay` layer shell surfaces
+        overlay: *wlr.SceneTree,
+        /// `XdgShell` popup surfaces
+        popups: *wlr.SceneTree,
+        /// Xwayland override redirect windows
+        override_redirect: *wlr.SceneTree,
+    },
+    workspaces: std.ArrayList(Workspace),
+    current_workspace_idx: usize = 0,
+},
+is_active: bool = true,
+
+frame_listener: wl.Listener(*wlr.Output) = .init(frameCallback),
+request_state_listener: wl.Listener(*wlr.Output.event.RequestState) = .init(requestStateCallback),
+destroy_listener: wl.Listener(*wlr.Output) = .init(destroyCallback),
 
 pub fn fromOpaquePtr(ptr: ?*anyopaque) ?*Self {
     return @as(*Self, @ptrCast(@alignCast(ptr)));
@@ -117,6 +150,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         .height = wlr_output.height,
     };
 
+    const scene_root = try owm.SERVER.scene.root.createSceneTree();
     self.* = .{
         .id = id,
         .wlr_output = wlr_output,
@@ -124,8 +158,22 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         .work_area = area,
         .wlr_layout_output = layout_output,
         .wlr_scene_output = scene_output,
-        .scene = try owm.SERVER.scene.createOutputScene(self),
+        .scene = .{
+            .root = scene_root,
+            .layers = .{
+                .background = try scene_root.createSceneTree(),
+                .bottom = try scene_root.createSceneTree(),
+                .workspaces_root = try scene_root.createSceneTree(),
+                .top = try scene_root.createSceneTree(),
+                .overlay = try scene_root.createSceneTree(),
+                .popups = try scene_root.createSceneTree(),
+                .override_redirect = try scene_root.createSceneTree(),
+            },
+            .workspaces = .empty,
+        },
     };
+    try self.sceneCreateWorkspace();
+    self.getCurrentWorkspace().setEnabled(true);
 
     wlr_output.data = self;
 
@@ -153,7 +201,9 @@ pub fn disableOutput(self: *Self) Error!void {
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
     self.is_active = false;
-    self.scene.handleOutputModeChange();
+
+    log.debugf("Output {s}: Deactivated, marking orphaning windows", .{self.id});
+    self.sceneOrphanWindows();
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -193,7 +243,6 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
     };
     self.recalculateWorkArea();
     self.is_active = true;
-    self.scene.handleOutputModeChange();
 }
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
@@ -318,6 +367,164 @@ fn recalculateWorkArea(self: *Self) void {
     log.debugf("Output {s}: New work area ({}, {}, {}, {})", .{ self.id, self.work_area.x, self.work_area.y, self.work_area.width, self.work_area.height });
 }
 
+//////////////////////////////////
+///////////// Scene //////////////
+//////////////////////////////////
+
+/// Creats and appends a workspace to the list of workspaces, disabled by default
+pub fn sceneCreateWorkspace(self: *Self) !void {
+    var scene = &self.scene;
+    try scene.workspaces.append(
+        owm.alloc,
+        Workspace{ .root = try scene.root.createSceneTree() },
+    );
+    var new_workspace = &scene.workspaces.items[scene.workspaces.items.len - 1];
+    new_workspace.windows.init();
+    new_workspace.setEnabled(false);
+    log.debugf("Output {s}: Created workspace {}", .{ self.id, scene.workspaces.items.len });
+}
+
+pub fn sceneSwitchWorkspace(self: *Self, idx: usize) void {
+    var scene = &self.scene;
+    if (idx >= scene.workspaces.items.len) {
+        return;
+    }
+    self.getCurrentWorkspace().setEnabled(false);
+    scene.current_workspace_idx = idx;
+    self.getCurrentWorkspace().setEnabled(true);
+    self.damageWhole();
+}
+
+pub inline fn sceneGetCurrentRoot(self: *Self) *wlr.SceneTree {
+    return self.getCurrentWorkspace().root;
+}
+
+pub inline fn sceneGetRoot(self: *Self, idx: usize) *wlr.SceneTree {
+    return self.scene.workspaces.items[idx].root;
+}
+
+pub fn sceneAddWindow(self: *Self, window: *Window) void {
+    self.getCurrentWorkspace().windows.prepend(window);
+    window.setSceneTreeParent(self.sceneGetCurrentRoot());
+}
+
+/// Ensures that the workspaces up until the given `idx` exists, if not, it creates them on the spot
+pub fn ensureWorkspacesExist(self: *Self, idx: usize) void {
+    const scene = &self.scene;
+    if (idx < scene.workspaces.items.len) return;
+
+    var next_idx: usize = scene.workspaces.items.len;
+    while (next_idx <= idx) : (next_idx += 1) {
+        self.sceneCreateWorkspace() catch {
+            log.errf("Output {s}: Failed to create new workspace", .{self.id});
+            return;
+        };
+    }
+}
+
+pub fn sceneMoveWindowToWorkspace(self: *Self, window: *Window, target_workspace_idx: usize) void {
+    const scene = &self.scene;
+    self.ensureWorkspacesExist(target_workspace_idx);
+
+    window.link.remove();
+    var target_workspace = &scene.workspaces.items[target_workspace_idx];
+    window.setSceneTreeParent(target_workspace.root);
+    target_workspace.windows.prepend(window);
+
+    log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx + 1 });
+}
+
+pub fn sceneEnsureWindowsInViewport(self: *Self) void {
+    if (!self.is_active) {
+        log.debugf("Output {s}: Deactivated, marking orphaning windows", .{self.id});
+        self.sceneOrphanWindows();
+        return;
+    }
+
+    log.debugf("Output {s}: Moving windows belonging to output into viewport", .{self.id});
+    for (self.scene.workspaces.items) |*workspace| {
+        var window_iter = workspace.windows.iterator(.forward);
+        while (window_iter.next()) |window| {
+            self.sceneEnsureWindowInViewport(window);
+        }
+    }
+    log.debugf("Output {s}: Moved windows belonging to output into viewport", .{self.id});
+}
+
+pub fn sceneEnsureWindowInViewport(self: *Self, window: *Window) void {
+    if (!window.isMapped()) return;
+
+    const window_pos = window.getPos();
+    const window_geom = window.getGeom();
+    const geom: wlr.Box = .{
+        .x = window_pos.x,
+        .y = window_pos.y,
+        .width = window_geom.width,
+        .height = window_geom.height,
+    };
+    var intersection: wlr.Box = undefined;
+    const intersected = wlr.Box.intersection(&intersection, &self.area, &geom);
+    if (!intersected) {
+        log.debugf("Output {s}: Window '{s}' is not in viewport, moving", .{ self.id, window.getTitle() orelse "" });
+        const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
+        window.setPos(new_window_coords.x, new_window_coords.y);
+        log.debugf("Output {s}: Window '{s}' moved to viewport", .{ self.id, window.getTitle() orelse "" });
+    }
+}
+
+fn sceneOrphanWindows(self: *Self) void {
+    log.debugf("Output {s}: Marking owned windows as orphan", .{self.id});
+    var count: usize = 0;
+    for (self.scene.workspaces.items, 0..) |*workspace, idx| {
+        var window_iter = workspace.windows.iterator(.forward);
+        while (window_iter.next()) |window| : (count += 1) {
+            owm.SERVER.scene.storeOrphanWindow(window, idx);
+        }
+    }
+    log.debugf("Output {s}: Marked {} owned windows as orphan", .{ self.id, count });
+}
+
+/// Puts the topmost window at the end of the list and returns the new top window in the current workspace
+/// Also known as `Alt+Tab`
+pub fn sceneSwitchToNextWindow(self: *Self) ?*Window {
+    var workspace = self.getCurrentWorkspace();
+    if (workspace.windows.first()) |first_window| {
+        first_window.link.remove();
+        workspace.windows.append(first_window);
+        return workspace.windows.first().?;
+    }
+    return null;
+}
+
+pub fn sceneGetTopWindow(self: *Self) ?*Window {
+    return self.getCurrentWorkspace().windows.first();
+}
+
+pub fn sceneGetLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
+    const scene = &self.scene;
+    switch (layer) {
+        .background => return scene.layers.background,
+        .bottom => return scene.layers.bottom,
+        .top => return scene.layers.top,
+        .overlay => return scene.layers.overlay,
+        _ => unreachable,
+    }
+}
+
+pub fn raiseWindowToTopOfWorkspace(self: *Self, window: *Window) void {
+    window.link.remove();
+    self.getCurrentWorkspace().windows.prepend(window);
+}
+
+inline fn getCurrentWorkspace(self: *Self) *Workspace {
+    const scene = &self.scene;
+    return &scene.workspaces.items[scene.current_workspace_idx];
+}
+
+//////////////////////////////////////
+///////////// Callbacks //////////////
+//////////////////////////////////////
+
 /// Called every time when an output is ready to display a frame, generally at the refresh rate
 fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
     const self: *Self = @fieldParentPtr("frame_listener", listener);
@@ -367,6 +574,8 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     var should_terminate_server = true;
     if (self.isDisplay()) {
         should_terminate_server = false;
+    } else {
+        log.infof("Output {s}: Terminating server", .{self.id});
     }
 
     self.frame_listener.link.remove();
@@ -375,14 +584,14 @@ fn destroyCallback(listener: *wl.Listener(*wlr.Output), _: *wlr.Output) void {
     self.is_active = false;
 
     if (!should_terminate_server) {
-        owm.SERVER.scene.removeOutputScene(self);
+        self.sceneOrphanWindows();
+        self.scene.root.node.destroy();
     }
 
     self.link.remove();
     owm.c_alloc.destroy(self);
 
     if (should_terminate_server) {
-        log.infof("Output {s}: Terminating server", .{self.id});
         owm.SERVER.wl_server.terminate();
         return;
     }

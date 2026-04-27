@@ -20,7 +20,6 @@ pub const Window = struct {
     window: WindowType,
 
     pub fn newXdgToplevel(wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!*Self {
-        log.info("New XdgToplevel");
         var window = try owm.c_alloc.create(Self);
         errdefer owm.c_alloc.destroy(window);
 
@@ -93,24 +92,6 @@ pub const Window = struct {
                 return xw.getGeom();
             },
         }
-    }
-
-    pub fn destroySceneTree(self: *Self) void {
-        var scene_tree: *wlr.SceneTree = undefined;
-        switch (self.window) {
-            .xdg_toplevel => |*t| {
-                scene_tree = t.wlr_scene_tree;
-            },
-            .xwayland => |*xw| {
-                if (xw.wlr_scene_tree) |wst| {
-                    scene_tree = wst;
-                } else {
-                    return;
-                }
-            },
-        }
-
-        scene_tree.node.destroy();
     }
 
     pub fn setFocus(self: *Self, focus: bool) void {
@@ -192,34 +173,40 @@ pub const Window = struct {
         scene_tree.node.raiseToTop();
     }
 
-    pub fn recreateSurface(self: *Self, new_parent: *wlr.SceneTree) void {
+    pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
+        self.link.remove();
         switch (self.window) {
             .xdg_toplevel => |*t| {
-                t.wlr_scene_tree = new_parent.createSceneXdgSurface(t.wlr_xdg_toplevel.base) catch {
-                    log.err("Window: Faile dto create SceneSubsurfaceTree for XdgToplevel");
-                    return;
-                };
+                t.current_output = output;
+                output.sceneAddWindow(self);
             },
             .xwayland => |*xw| {
-                xw.wlr_scene_tree = new_parent.createSceneSubsurfaceTree(xw.wlr_xwayland_surface.surface.?) catch {
-                    log.err("Window: Faile dto create SceneSubsurfaceTree for Xwayland");
-                    return;
-                };
+                xw.current_output = output;
+                if (xw.wlr_scene_tree) |_| {
+                    output.sceneAddWindow(self);
+                }
             },
         }
     }
 
-    pub fn setCurrentOutput(self: *Self, output: *owm.server.Output) void {
+    pub fn isMapped(self: *Self) bool {
         switch (self.window) {
             .xdg_toplevel => |*t| {
-                t.current_output = output;
-                t.wlr_scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
+                return t.mapped;
             },
             .xwayland => |*xw| {
-                xw.current_output = output;
-                if (xw.wlr_scene_tree) |scene_tree| {
-                    scene_tree.node.reparent(output.scene.getCurrentWorkspaceRoot());
-                }
+                return xw.mapped;
+            },
+        }
+    }
+
+    pub fn getTitle(self: *Self) ?[*:0]u8 {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                return t.wlr_xdg_toplevel.title;
+            },
+            .xwayland => |*xw| {
+                return xw.wlr_xwayland_surface.class;
             },
         }
     }

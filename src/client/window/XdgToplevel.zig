@@ -19,6 +19,7 @@ box_before_maximize: wlr.Box,
 wlr_scene_tree: *wlr.SceneTree,
 x: i32 = 0,
 y: i32 = 0,
+mapped: bool = false,
 
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -31,14 +32,18 @@ request_maximize_listener: wl.Listener(void) = .init(requestMaximizeCallback),
 request_fullscreen_listener: wl.Listener(void) = .init(requestFullscreenCallback),
 
 pub fn create(xdg_toplevel_window: *Window, wlr_xdg_toplevel: *wlr.XdgToplevel) client.Error!Self {
-    const output = owm.SERVER.outputAtCursor() orelse return client.Error.CursorNotOnOutput;
+    log.info("XdgToplevel: New window");
 
-    const scene_tree = output.scene.getCurrentWorkspaceRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
-        log.err("Failed to create scene tree for XdgToplevel");
-        return client.Error.FailedToCreateSceneTree;
+    const output = owm.SERVER.outputAtCursor() orelse {
+        log.err("XdgToplevel: Output was not at cursor, closing window");
+        wlr_xdg_toplevel.sendClose();
+        return client.Error.CursorNotOnOutput;
     };
 
-    errdefer scene_tree.node.link.remove();
+    const scene_tree = output.sceneGetCurrentRoot().createSceneXdgSurface(wlr_xdg_toplevel.base) catch {
+        log.err("XdgToplevel : Failed to create scene tree for XdgToplevel");
+        return client.Error.FailedToCreateSceneTree;
+    };
 
     scene_tree.node.data = xdg_toplevel_window;
 
@@ -77,7 +82,7 @@ pub fn setFocus(self: *Self, focus: bool) void {
     _ = self.wlr_xdg_toplevel.setActivated(focus);
     if (focus) {
         self.wlr_scene_tree.node.raiseToTop();
-        self.current_output.scene.raiseWindowToTopOfWorkspace(Window.from(self));
+        self.current_output.raiseWindowToTopOfWorkspace(Window.from(self));
     }
 }
 
@@ -128,6 +133,10 @@ pub fn toggleMaximize(self: *Self) void {
     _ = self.wlr_xdg_toplevel.base.scheduleConfigure();
 }
 
+//////////////////////////////////////
+///////////// Callbacks //////////////
+//////////////////////////////////////
+
 fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.XdgPopup) void {
     const toplevel: *Self = @fieldParentPtr("new_popup_listener", listener);
     _ = client.Popup.create(
@@ -136,7 +145,7 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
         toplevel.wlr_scene_tree,
         toplevel.current_output,
     ) catch |err| {
-        log.errf("Failed to create XDG Popup for toplevel {}", .{err});
+        log.errf("XdgToplevel: Failed to create XDG Popup for toplevel {}", .{err});
         return;
     };
 }
@@ -145,8 +154,11 @@ fn newPopupCallback(listener: *wl.Listener(*wlr.XdgPopup), wlr_xdg_popup: *wlr.X
 fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
-    toplevel.current_output.scene.addWindowToCurrentWorkspace(xdg_toplevel_window);
+    toplevel.current_output.sceneAddWindow(xdg_toplevel_window);
+    toplevel.current_output.sceneEnsureWindowInViewport(xdg_toplevel_window);
     owm.SERVER.seat.focusWindow(xdg_toplevel_window);
+
+    toplevel.mapped = true;
 }
 
 /// Called when the surface should no longer be shown
@@ -157,6 +169,8 @@ fn unmapCallback(listener: *wl.Listener(void)) void {
         owm.SERVER.seat.resetCursorMode();
     }
     xdg_toplevel_window.link.remove();
+
+    toplevel.mapped = false;
 }
 
 /// Called when the surface state is committed
@@ -173,6 +187,8 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 
 fn destroyCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("destroy_listener", listener);
+
+    log.debugf("Toplevel {*}: Destroy callback", .{toplevel});
 
     toplevel.new_popup_listener.link.remove();
     toplevel.map_listener.link.remove();

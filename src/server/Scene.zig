@@ -1,9 +1,10 @@
+//! Reprezents the root of the scene. Contains methods to grab the surfaces located at certain points and handles orphaned windows.
+
 const Self = @This();
 
 const std = @import("std");
 
 const wl = @import("wayland").server.wl;
-const zwlr = @import("wayland").server.zwlr;
 const wlr = @import("wlroots");
 
 const owm = @import("root").owm;
@@ -25,161 +26,36 @@ pub const SurfaceAtResponse = struct {
     wlr_surface: *wlr.Surface,
 };
 
-pub const Workspace = struct {
-    root: *wlr.SceneTree,
-    windows: wl.list.Head(Window, .link) = undefined,
-};
-
-pub const OutputScene = struct {
-    root: *wlr.SceneTree,
-    output: *Output,
-    current_workspace_idx: usize = 0,
-    workspaces: std.ArrayList(Workspace) = .empty,
-
-    pub fn newWorkspace(self: *OutputScene) !void {
-        try self.workspaces.append(owm.alloc, Workspace{
-            .root = try self.root.createSceneTree(),
-        });
-        var new_workspace = &self.workspaces.items[self.workspaces.items.len - 1];
-        new_workspace.windows.init();
-        new_workspace.root.node.setEnabled(false);
-    }
-
-    pub inline fn enableWorkspace(self: *OutputScene, idx: usize) void {
-        if (idx >= self.workspaces.items.len) {
-            log.errf("OuptutScene {s}: Tried to enable non-existent workspace {}. Only {} workspaces exist", .{ self.output.id, idx, self.workspaces.items.len });
-            return;
-        }
-        self.workspaces.items[idx].root.node.setEnabled(true);
-    }
-
-    pub fn switchWorkspace(self: *OutputScene, new_workspace_idx: usize) void {
-        if (new_workspace_idx >= self.workspaces.items.len) {
-            return;
-        }
-        self.getCurrentWorkspaceRoot().node.setEnabled(false);
-        self.current_workspace_idx = new_workspace_idx;
-        self.getCurrentWorkspaceRoot().node.setEnabled(true);
-        self.output.damageWhole();
-    }
-
-    inline fn getCurrentWorkspace(self: *OutputScene) *Workspace {
-        return &self.workspaces.items[self.current_workspace_idx];
-    }
-
-    pub fn getCurrentWorkspaceRoot(self: *OutputScene) *wlr.SceneTree {
-        return self.getCurrentWorkspace().root;
-    }
-
-    pub fn addWindowToCurrentWorkspace(self: *OutputScene, window: *Window) void {
-        self.getCurrentWorkspace().windows.append(window);
-    }
-
-    pub fn raiseWindowToTopOfWorkspace(self: *OutputScene, window: *Window) void {
-        window.link.remove();
-        self.getCurrentWorkspace().windows.prepend(window);
-    }
-
-    /// Puts the topmost window at the end of the list and returns the new top window.
-    /// Also known as `Alt+Tab`
-    pub fn switchToNextWindowInWorkspace(self: *OutputScene) ?*Window {
-        var workspace = self.getCurrentWorkspace();
-        if (workspace.windows.first()) |first_window| {
-            first_window.link.remove();
-            workspace.windows.append(first_window);
-            return workspace.windows.first().?;
-        }
-        return null;
-    }
-
-    /// Moves a window from its current workspace to a different target workspace.
-    /// If the window is already in the target workspace, it is removed first.
-    pub fn moveWindowToWorkspace(self: *OutputScene, window: *Window, target_workspace_idx: usize) void {
-        // Create intermediate workspaces if the target workspace doesn't exist yet
-        if (target_workspace_idx >= self.workspaces.items.len) {
-            var next_idx: usize = self.workspaces.items.len;
-            while (next_idx <= target_workspace_idx) : (next_idx += 1) {
-                self.newWorkspace() catch {
-                    log.errf("OutputScene {s}: Failed to create new workspace while trying to move window to it", .{self.output.id});
-                    return;
-                };
-            }
-        }
-
-        window.link.remove();
-        var target_workspace = &self.workspaces.items[target_workspace_idx];
-        window.setSceneTreeParent(target_workspace.root);
-        target_workspace.windows.prepend(window);
-    }
-
-    pub fn getTopWindowInWorkspace(self: *OutputScene) ?*Window {
-        return self.getCurrentWorkspace().windows.first();
-    }
-
-    /// When an outputs mode is changes, the windows in it's scene viewport are potentially
-    /// not in view anymore. Move them into view if they're outside of the viewport
-    /// of the output.
-    pub fn handleOutputModeChange(self: *OutputScene) void {
-        if (!self.output.is_active) {
-            log.debugf("OutputScene {s}: Output is disabled, marking owned windows as orphan", .{self.output.id});
-            owm.SERVER.scene.collectWindowsAsOrphan(self);
-            return;
-        }
-        log.debugf("OutputScene {s}: Moving windows belonging to output into viewport post mode change", .{self.output.id});
-
-        const output_area = self.output.area;
-        for (self.workspaces.items) |*workspace| {
-            var window_iter = workspace.windows.iterator(.forward);
-            while (window_iter.next()) |window| {
-                const window_pos = window.getPos();
-                const window_geom = window.getGeom();
-                const geom: wlr.Box = .{
-                    .x = window_pos.x,
-                    .y = window_pos.y,
-                    .width = window_geom.width,
-                    .height = window_geom.height,
-                };
-                var intersection: wlr.Box = undefined;
-                _ = wlr.Box.intersection(&intersection, &output_area, &geom);
-                if (intersection.width <= 0 or intersection.height <= 0) {
-                    log.debugf("OutputScene {s}: Window {*} is not in viewport, moving", .{ self.output.id, window });
-                    const new_window_coords = self.output.getCenterPosForWindow(geom.width, geom.height);
-                    window.setPos(new_window_coords.x, new_window_coords.y);
-                }
-            }
-        }
-
-        log.debugf("OutputScene {s}: Completed moving windows to viewport", .{self.output.id});
-    }
-};
-
-const OrphanWindow = struct {
-    workspace_idx: usize,
-    window: *Window,
-};
-
 wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
 
-output_scenes: std.ArrayList(OutputScene) = .empty,
-orphaned_windows: std.ArrayList(OrphanWindow) = .empty,
-
 root: *wlr.SceneTree,
-layers: struct {
-    /// `background` layer shell surfaces
-    background: *wlr.SceneTree,
-    /// `bottom` layer shell surfaces
-    bottom: *wlr.SceneTree,
-    /// Root node for anchoring the workspaces of outputs
-    outputs_root: *wlr.SceneTree,
-    /// `top` layer shell surfaces
-    top: *wlr.SceneTree,
-    /// `overlay` layer shell surfaces
-    overlay: *wlr.SceneTree,
-    /// `XdgShell` popup surfaces
-    popups: *wlr.SceneTree,
-    /// Xwayland override redirect windows
-    override_redirect: *wlr.SceneTree,
+orphaned_windows: struct {
+    root: *wlr.SceneTree,
+    windows: wl.list.Head(Window, .link) = undefined,
+    workspace_idxs: std.ArrayList(usize) = .empty,
+
+    fn getCount(self: *@This()) usize {
+        return self.workspace_idxs.items.len;
+    }
+
+    fn clear(self: *@This()) void {
+        var orphan_window_iter = self.windows.iterator(.forward);
+        while (orphan_window_iter.next()) |window| {
+            window.link.remove();
+        }
+        self.workspace_idxs.clearAndFree(owm.alloc);
+    }
+
+    fn getMaxWorkspaceIdx(self: *@This()) usize {
+        var max: usize = 0;
+        for (self.workspace_idxs.items) |idx| {
+            if (idx > max) {
+                max = idx;
+            }
+        }
+        return max;
+    }
 },
 
 pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
@@ -190,64 +66,20 @@ pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
         .wlr_scene = wlr_scene,
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .root = root,
-        .layers = .{
-            .background = try root.createSceneTree(),
-            .bottom = try root.createSceneTree(),
-            .outputs_root = try root.createSceneTree(),
-            .top = try root.createSceneTree(),
-            .overlay = try root.createSceneTree(),
-            .popups = try root.createSceneTree(),
-            .override_redirect = try root.createSceneTree(),
+        .orphaned_windows = .{
+            .root = try root.createSceneTree(),
         },
     };
 }
 
+pub fn init(self: *Self) void {
+    self.orphaned_windows.root.node.setEnabled(false);
+    self.orphaned_windows.windows.init();
+}
+
 pub fn deinit(self: *Self) void {
     log.debug("Scene: Cleaning up");
-    for (self.output_scenes.items) |*output_scene| {
-        for (output_scene.workspaces.items) |*workspace| {
-            var iter = workspace.windows.iterator(.forward);
-            while (iter.next()) |window| {
-                window.link.remove();
-            }
-        }
-        output_scene.root.node.destroy();
-    }
-    self.output_scenes.deinit(owm.alloc);
-    self.orphaned_windows.deinit(owm.alloc);
-}
-
-pub fn createOutputScene(self: *Self, output: *Output) !*OutputScene {
-    var output_scene = OutputScene{
-        .output = output,
-        .root = try self.layers.outputs_root.createSceneTree(),
-    };
-    try output_scene.newWorkspace();
-    output_scene.enableWorkspace(0);
-    try self.output_scenes.append(owm.alloc, output_scene);
-    return &self.output_scenes.items[self.output_scenes.items.len - 1];
-}
-
-pub fn removeOutputScene(self: *Self, output: *Output) void {
-    log.debugf("Scene: Removing output {s} from the scene", .{output.id});
-    for (self.output_scenes.items, 0..) |*os, idx| {
-        if (os.output != output) continue;
-        os.handleOutputModeChange();
-        os.root.node.destroy();
-        _ = self.output_scenes.swapRemove(idx);
-        return;
-    }
-    log.err("Scene: Tried to remove OutputScene for an unknown output");
-}
-
-pub fn getLayerSurfaceTree(self: *Self, layer: zwlr.LayerShellV1.Layer) *wlr.SceneTree {
-    switch (layer) {
-        .background => return self.layers.background,
-        .bottom => return self.layers.bottom,
-        .top => return self.layers.top,
-        .overlay => return self.layers.overlay,
-        _ => unreachable,
-    }
+    self.orphaned_windows.root.node.destroy();
 }
 
 pub fn windowAt(self: *Self, lx: f64, ly: f64) ?WindowAtResponse {
@@ -291,67 +123,51 @@ pub fn surfaceAt(self: *Self, lx: f64, ly: f64) ?SurfaceAtResponse {
     return null;
 }
 
-fn collectWindowsAsOrphan(self: *Self, output_scene: *OutputScene) void {
-    log.debugf("Scene: Collecting windows as orphan from OutputScene {s}", .{output_scene.output.id});
-    var window_count: usize = 0;
-    for (output_scene.workspaces.items) |*workspace| {
-        var iter = workspace.windows.iterator(.forward);
-        while (iter.next()) |window| {
-            self.orphaned_windows.append(owm.alloc, OrphanWindow{
-                .workspace_idx = 0,
-                .window = window,
-            }) catch unreachable;
-            window.link.remove();
-            window.destroySceneTree();
-            window_count += 1;
-        }
-    }
-    log.debugf("Scene: Collected {} orphan windows from OutputScene {s}", .{ window_count, output_scene.output.id });
+pub fn storeOrphanWindow(self: *Self, window: *Window, workspace_idx: usize) void {
+    log.debugf("Scene: Orphaning window {*}", .{window});
+    window.link.remove();
+    window.setSceneTreeParent(self.orphaned_windows.root);
+    self.orphaned_windows.windows.append(window);
+    self.orphaned_windows.workspace_idxs.append(owm.alloc, workspace_idx) catch unreachable;
 }
 
 /// Must be called after arranging a set of outputs. In case we've had an output removed,
 /// we'll have a list of orphaned windows. These should get moved into the view of another output.
 /// We move them to the first available outputs viewport.
 pub fn handleOrphanedWindows(self: *Self) void {
-    if (self.orphaned_windows.items.len == 0 or self.output_scenes.items.len == 0) return;
-
-    var output_scene_maybe: ?*OutputScene = null;
-    for (self.output_scenes.items) |*os| {
-        if (os.output.is_active) {
-            output_scene_maybe = os;
-        }
-    }
-
-    if (output_scene_maybe == null) {
-        log.debug("Scene: There are no active outputs, keeping list of orphan windows intact");
+    if (self.orphaned_windows.getCount() == 0) {
         return;
     }
 
-    var output_scene = output_scene_maybe.?;
-    log.debugf("Scene: Moving {} orphaned windows to output {s}", .{ self.orphaned_windows.items.len, output_scene.output.id });
-
-    for (self.orphaned_windows.items) |*orphan_window| {
-        // Make sure the workspace idx exists
-        // Add to workspace
-        if (orphan_window.workspace_idx >= output_scene.workspaces.items.len) {
-            var next_idx: usize = output_scene.workspaces.items.len;
-            while (next_idx <= orphan_window.workspace_idx) : (next_idx += 1) {
-                output_scene.newWorkspace() catch {
-                    log.err("Failed to create new workspace while tyring to move orphaned window to it");
-                    return;
-                };
-            }
+    var output_to_move_maybe: ?*Output = null;
+    var output_iter = owm.SERVER.output_manager.outputs.iterator(.forward);
+    while (output_iter.next()) |output| {
+        if (output.is_active) {
+            output_to_move_maybe = output;
+            break;
         }
-
-        var target_workspace = &output_scene.workspaces.items[orphan_window.workspace_idx];
-        orphan_window.window.recreateSurface(target_workspace.root);
-        const window_geom = orphan_window.window.getGeom();
-        orphan_window.window.setCurrentOutput(output_scene.output);
-        const new_pos = output_scene.output.getCenterPosForWindow(window_geom.width, window_geom.height);
-        orphan_window.window.setPos(new_pos.x, new_pos.y);
-        target_workspace.windows.prepend(orphan_window.window);
     }
 
-    log.debugf("Scene: Moved orphaned windows to output {s}", .{output_scene.output.id});
-    self.orphaned_windows.clearAndFree(owm.alloc);
+    if (output_to_move_maybe == null) {
+        log.debugf("Scene: There are no active outputs, keeping {} orphan windows", .{self.orphaned_windows.getCount()});
+    }
+
+    var output_to_move = output_to_move_maybe.?;
+    log.debugf("Scene: Moving {} orphaned windows to output {s}", .{ self.orphaned_windows.getCount(), output_to_move.id });
+
+    output_to_move.ensureWorkspacesExist(self.orphaned_windows.getMaxWorkspaceIdx());
+
+    var orphan_window_iter = self.orphaned_windows.windows.iterator(.forward);
+    var counter: usize = 0;
+    while (orphan_window_iter.next()) |window| : (counter += 1) {
+        const workspace_idx = self.orphaned_windows.workspace_idxs.items[counter];
+        log.debugf("Scene: Moving window {*} to output {s} workspace {}", .{ window, output_to_move.id, workspace_idx + 1 });
+        window.setCurrentOutput(output_to_move);
+        output_to_move.sceneMoveWindowToWorkspace(window, workspace_idx);
+    }
+
+    output_to_move.sceneEnsureWindowsInViewport();
+
+    log.debugf("Scene: Moved {} orphaned windows to output {s}", .{ self.orphaned_windows.getCount(), output_to_move.id });
+    self.orphaned_windows.clear();
 }

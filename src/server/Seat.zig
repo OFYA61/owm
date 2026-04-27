@@ -91,7 +91,7 @@ pub fn resetCursorMode(self: *Self) void {
 
 pub fn focusTopWindow(self: *Self) void {
     if (owm.SERVER.outputAtCursor()) |output| {
-        if (output.scene.getTopWindowInWorkspace()) |top_window| {
+        if (output.sceneGetTopWindow()) |top_window| {
             self.focusWindow(top_window);
         }
     }
@@ -145,6 +145,7 @@ pub fn requestResize(self: *Self, window: *Window, edges: wlr.Edges) void {
 pub fn clearFocusIfFocusedWindow(self: *Self, window: *Window) void {
     if (self.focused_window == window) {
         self.focused_window = null;
+        self.wlr_seat.keyboardNotifyClearFocus();
         self.focusTopWindow();
     }
 }

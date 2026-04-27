@@ -69,6 +69,8 @@ pub fn init(self: *Self) anyerror!void {
         .wlr_xwayland = wlr_xwayland,
     };
 
+    self.scene.init();
+
     _ = try wl_server.addSocketAuto(&self.wl_socket);
 
     try self.wlr_renderer.initServer(wl_server);
@@ -131,7 +133,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             .NextWindow => {
                 if (self.seat.focused_window) |_| {
                     if (self.outputAtCursor()) |output| {
-                        if (output.scene.switchToNextWindowInWorkspace()) |next_window| {
+                        if (output.sceneSwitchToNextWindow()) |next_window| {
                             self.seat.focusWindow(next_window);
                         }
                     }
@@ -141,13 +143,15 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
             },
             .SwitchWorkspace => |idx| {
                 if (self.outputAtCursor()) |output| {
-                    output.scene.switchWorkspace(idx - 1);
+                    output.sceneSwitchWorkspace(idx - 1);
                 }
             },
             .MoveWindowToWorkspace => |idx| {
                 if (self.seat.focused_window) |window| {
                     if (self.outputAtCursor()) |output| {
-                        output.scene.moveWindowToWorkspace(window, idx - 1);
+                        output.sceneMoveWindowToWorkspace(window, idx - 1);
+                        window.setFocus(false);
+                        self.seat.clearFocusIfFocusedWindow(window);
                     }
                 }
             },
