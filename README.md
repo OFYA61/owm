@@ -58,8 +58,8 @@ modifiers, keycode, action, action_args
 - [ ] Workspaces
     - [x] Create worksapces
     - [x] Move windows between workspaces
-    - [ ] Cleanup workspaces on output destroy
-    - [ ] Move destroyed outputs windows to another outputs workspaces
+    - [x] Cleanup workspaces on output destroy
+    - [x] Move destroyed outputs windows to another outputs workspaces
     - [ ] Implement `ext-workspace-v1` protocol
 - [ ] Finish implementing `wlr-layer-shell` protocol
     - [ ] Handle status bar positioning on all 4 sides
@@ -68,3 +68,7 @@ modifiers, keycode, action, action_args
     - [ ] Notifications (overlay layer)
     - [ ] Screen Lockers (overlay layer)
 - [ ] Custom rendering logic, cuz I want to
+
+## Known bugs
+
+- On certain `output + workspace + open window` combinations, when an output is disconnected and the layout changes, rearranging windows so that they're not outside of the viewport causes a hard crash. The call to set their nodes position fails.
