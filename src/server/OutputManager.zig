@@ -13,6 +13,7 @@ const Output = @import("Output.zig");
 wlr_output_layout: *wlr.OutputLayout,
 outputs: wl.list.Head(Output, .link) = undefined,
 new_output_listener: wl.Listener(*wlr.Output) = .init(newOutputCallback),
+output_layout_change_listener: wl.Listener(*wlr.OutputLayout) = .init(outputLayoutChangeListener),
 
 pub fn create(wl_server: *wl.Server) !Self {
     const wlr_output_layout = try wlr.OutputLayout.create(wl_server); // Utility for working with an arrangement of screens in a physical layout
@@ -25,11 +26,13 @@ pub fn create(wl_server: *wl.Server) !Self {
 pub fn init(self: *Self) void {
     self.outputs.init();
     owm.SERVER.wlr_backend.events.new_output.add(&self.new_output_listener);
+    self.wlr_output_layout.events.change.add(&self.output_layout_change_listener);
 }
 
 pub fn deinit(self: *Self) void {
     log.debug("OutputManager: Cleaning up");
     self.new_output_listener.link.remove();
+    self.output_layout_change_listener.link.remove();
 }
 
 pub inline fn getOutputBox(self: *Self, output: *Output) wlr.Box {
@@ -55,6 +58,24 @@ fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Outpu
 
     owm.config.output.storeDisplay(new_output.id, new_output.getModel());
     self.setupOutputArrangement();
+}
+
+fn outputLayoutChangeListener(listener: *wl.Listener(*wlr.OutputLayout), _: *wlr.OutputLayout) void {
+    const self: *Self = @fieldParentPtr("output_layout_change_listener", listener);
+    var output_iter = self.outputs.iterator(.forward);
+    owm.SERVER.scene.handleOrphanedWindows();
+    while (output_iter.next()) |output| {
+        output.sceneEnsureWindowsInViewport();
+
+        // Make sure the cursor isn't outside of the outputs viewports by moving it to the center of an active output
+        if (output.is_active) {
+            owm.SERVER.seat.setCursorPos(
+                @as(f64, @floatFromInt(output.area.x + @divExact(output.area.width, 2))),
+                @as(f64, @floatFromInt(output.area.y + @divExact(output.area.height, 2))),
+            );
+            break;
+        }
+    }
 }
 
 /// Must be invoked when a new output is detected or when an output is disconnected.
@@ -146,17 +167,4 @@ pub fn setupOutputArrangement(self: *Self) void {
         }
         owm.config.output.storeArrangement(arrangement_id, arrangement);
     }
-
-    // Make sure the cursor isn't outside of the outputs viewports by moving it to the center of an active output
-    for (outputs.items) |output| {
-        if (output.is_active) {
-            owm.SERVER.seat.setCursorPos(
-                @as(f64, @floatFromInt(output.area.x + @divExact(output.area.width, 2))),
-                @as(f64, @floatFromInt(output.area.y + @divExact(output.area.height, 2))),
-            );
-            break;
-        }
-    }
-
-    owm.SERVER.scene.handleOrphanedWindows();
 }

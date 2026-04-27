@@ -199,4 +199,15 @@ pub const Window = struct {
             },
         }
     }
+
+    pub fn getTitle(self: *Self) ?[*:0]u8 {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                return t.wlr_xdg_toplevel.title;
+            },
+            .xwayland => |*xw| {
+                return xw.wlr_xwayland_surface.class;
+            },
+        }
+    }
 };

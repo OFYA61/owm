@@ -46,6 +46,16 @@ orphaned_windows: struct {
         }
         self.workspace_idxs.clearAndFree(owm.alloc);
     }
+
+    fn getMaxWorkspaceIdx(self: *@This()) usize {
+        var max: usize = 0;
+        for (self.workspace_idxs.items) |idx| {
+            if (idx > max) {
+                max = idx;
+            }
+        }
+        return max;
+    }
 },
 
 pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
@@ -145,12 +155,15 @@ pub fn handleOrphanedWindows(self: *Self) void {
     var output_to_move = output_to_move_maybe.?;
     log.debugf("Scene: Moving {} orphaned windows to output {s}", .{ self.orphaned_windows.getCount(), output_to_move.id });
 
+    output_to_move.ensureWorkspacesExist(self.orphaned_windows.getMaxWorkspaceIdx());
+
     var orphan_window_iter = self.orphaned_windows.windows.iterator(.forward);
     var counter: usize = 0;
     while (orphan_window_iter.next()) |window| : (counter += 1) {
-        log.debugf("Scene: Moving window {*} to output {s}", .{ window, output_to_move.id });
+        const workspace_idx = self.orphaned_windows.workspace_idxs.items[counter];
+        log.debugf("Scene: Moving window {*} to output {s} workspace {}", .{ window, output_to_move.id, workspace_idx + 1 });
         window.setCurrentOutput(output_to_move);
-        output_to_move.sceneMoveWindowToWorkspace(window, self.orphaned_windows.workspace_idxs.items[counter]);
+        output_to_move.sceneMoveWindowToWorkspace(window, workspace_idx);
     }
 
     output_to_move.sceneEnsureWindowsInViewport();

@@ -188,6 +188,8 @@ fn commitCallback(listener: *wl.Listener(*wlr.Surface), _: *wlr.Surface) void {
 fn destroyCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("destroy_listener", listener);
 
+    log.debugf("Toplevel {*}: Destroy callback", .{toplevel});
+
     toplevel.new_popup_listener.link.remove();
     toplevel.map_listener.link.remove();
     toplevel.unmap_listener.link.remove();

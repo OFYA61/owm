@@ -75,7 +75,7 @@ scene: struct {
         /// Xwayland override redirect windows
         override_redirect: *wlr.SceneTree,
     },
-    workspaces: std.ArrayList(Workspace) = .empty,
+    workspaces: std.ArrayList(Workspace),
     current_workspace_idx: usize = 0,
 },
 is_active: bool = true,
@@ -169,6 +169,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
                 .popups = try scene_root.createSceneTree(),
                 .override_redirect = try scene_root.createSceneTree(),
             },
+            .workspaces = .empty,
         },
     };
     try self.sceneCreateWorkspace();
@@ -200,7 +201,9 @@ pub fn disableOutput(self: *Self) Error!void {
     }
     owm.SERVER.output_manager.wlr_output_layout.remove(self.wlr_output);
     self.is_active = false;
-    self.sceneEnsureWindowsInViewport();
+
+    log.debugf("Output {s}: Deactivated, marking orphaning windows", .{self.id});
+    self.sceneOrphanWindows();
 }
 
 pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!void {
@@ -240,8 +243,6 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
     };
     self.recalculateWorkArea();
     self.is_active = true;
-
-    self.sceneEnsureWindowsInViewport();
 }
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
@@ -430,7 +431,7 @@ pub fn sceneMoveWindowToWorkspace(self: *Self, window: *Window, target_workspace
     window.setSceneTreeParent(target_workspace.root);
     target_workspace.windows.prepend(window);
 
-    log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx });
+    log.debugf("Output {s}: Moved window to workspace {}", .{ self.id, target_workspace_idx + 1 });
 }
 
 pub fn sceneEnsureWindowsInViewport(self: *Self) void {
@@ -462,12 +463,12 @@ pub fn sceneEnsureWindowInViewport(self: *Self, window: *Window) void {
         .height = window_geom.height,
     };
     var intersection: wlr.Box = undefined;
-    _ = wlr.Box.intersection(&intersection, &self.area, &geom);
-    if (intersection.width <= 0 or intersection.height <= 0) {
-        log.debugf("Output {s}: Window {*} is not in viewport, moving", .{ self.id, window });
+    const intersected = wlr.Box.intersection(&intersection, &self.area, &geom);
+    if (!intersected) {
+        log.debugf("Output {s}: Window '{s}' is not in viewport, moving", .{ self.id, window.getTitle() orelse "" });
         const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
         window.setPos(new_window_coords.x, new_window_coords.y);
-        log.debugf("Output {s}: Window {*} moved to viewport", .{ self.id, window });
+        log.debugf("Output {s}: Window '{s}' moved to viewport", .{ self.id, window.getTitle() orelse "" });
     }
 }
 
