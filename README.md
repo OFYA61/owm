@@ -40,7 +40,7 @@ Config can be found in `$HOME/.config/owm`.
 For each display configuration, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
 concatinated with `:`. You can modify the position, resolution, and refresh rate. Needs restart to take affect.
 
-**TODO**: WRite docs around display arrangement
+**TODO**: Write docs around display arrangement
 
 ### Keybinds
 
