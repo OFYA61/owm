@@ -188,4 +188,15 @@ pub const Window = struct {
             },
         }
     }
+
+    pub fn isMapped(self: *Self) bool {
+        switch (self.window) {
+            .xdg_toplevel => |*t| {
+                return t.mapped;
+            },
+            .xwayland => |*xw| {
+                return xw.mapped;
+            },
+        }
+    }
 };

@@ -444,25 +444,31 @@ pub fn sceneEnsureWindowsInViewport(self: *Self) void {
     for (self.scene.workspaces.items) |*workspace| {
         var window_iter = workspace.windows.iterator(.forward);
         while (window_iter.next()) |window| {
-            const window_pos = window.getPos();
-            const window_geom = window.getGeom();
-            const geom: wlr.Box = .{
-                .x = window_pos.x,
-                .y = window_pos.y,
-                .width = window_geom.width,
-                .height = window_geom.height,
-            };
-            var intersection: wlr.Box = undefined;
-            _ = wlr.Box.intersection(&intersection, &self.area, &geom);
-            if (intersection.width <= 0 or intersection.height <= 0) {
-                log.debugf("Output {s}: Window {*} is not in viewport, moving", .{ self.id, window });
-                const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
-                window.setPos(new_window_coords.x, new_window_coords.y);
-                log.debugf("Output {s}: Window {*} moved to viewport", .{ self.id, window });
-            }
+            self.sceneEnsureWindowInViewport(window);
         }
     }
     log.debugf("Output {s}: Moved windows belonging to output into viewport", .{self.id});
+}
+
+pub fn sceneEnsureWindowInViewport(self: *Self, window: *Window) void {
+    if (!window.isMapped()) return;
+
+    const window_pos = window.getPos();
+    const window_geom = window.getGeom();
+    const geom: wlr.Box = .{
+        .x = window_pos.x,
+        .y = window_pos.y,
+        .width = window_geom.width,
+        .height = window_geom.height,
+    };
+    var intersection: wlr.Box = undefined;
+    _ = wlr.Box.intersection(&intersection, &self.area, &geom);
+    if (intersection.width <= 0 or intersection.height <= 0) {
+        log.debugf("Output {s}: Window {*} is not in viewport, moving", .{ self.id, window });
+        const new_window_coords = self.getCenterPosForWindow(geom.width, geom.height);
+        window.setPos(new_window_coords.x, new_window_coords.y);
+        log.debugf("Output {s}: Window {*} moved to viewport", .{ self.id, window });
+    }
 }
 
 fn sceneOrphanWindows(self: *Self) void {

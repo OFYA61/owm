@@ -19,6 +19,7 @@ box_before_maximize: wlr.Box,
 wlr_scene_tree: *wlr.SceneTree,
 x: i32 = 0,
 y: i32 = 0,
+mapped: bool = false,
 
 new_popup_listener: wl.Listener(*wlr.XdgPopup) = .init(newPopupCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -154,7 +155,10 @@ fn mapCallback(listener: *wl.Listener(void)) void {
     const toplevel: *Self = @fieldParentPtr("map_listener", listener);
     const xdg_toplevel_window = Window.from(toplevel);
     toplevel.current_output.sceneAddWindow(xdg_toplevel_window);
+    toplevel.current_output.sceneEnsureWindowInViewport(xdg_toplevel_window);
     owm.SERVER.seat.focusWindow(xdg_toplevel_window);
+
+    toplevel.mapped = true;
 }
 
 /// Called when the surface should no longer be shown
@@ -165,6 +169,8 @@ fn unmapCallback(listener: *wl.Listener(void)) void {
         owm.SERVER.seat.resetCursorMode();
     }
     xdg_toplevel_window.link.remove();
+
+    toplevel.mapped = false;
 }
 
 /// Called when the surface state is committed

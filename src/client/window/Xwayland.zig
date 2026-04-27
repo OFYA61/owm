@@ -15,6 +15,7 @@ current_output: *owm.server.Output,
 wlr_scene_tree: ?*wlr.SceneTree = null,
 x: i32 = 0,
 y: i32 = 0,
+mapped: bool = false,
 
 request_configure_listener: wl.Listener(*wlr.XwaylandSurface.event.Configure) = .init(requestConfigureCallback),
 map_listener: wl.Listener(void) = .init(mapCallback),
@@ -127,7 +128,7 @@ fn dissociateCallback(listener: *wl.Listener(void)) void {
 }
 
 fn mapCallback(listener: *wl.Listener(void)) void {
-    const xwayland: *Self = @fieldParentPtr("map_listener", listener);
+    var xwayland: *Self = @fieldParentPtr("map_listener", listener);
     const surface = xwayland.wlr_xwayland_surface.surface.?;
 
     surface.events.commit.add(&xwayland.commit_listener);
@@ -142,7 +143,10 @@ fn mapCallback(listener: *wl.Listener(void)) void {
     const xwayland_window = Window.from(xwayland);
     xwayland.wlr_scene_tree.?.node.data = xwayland_window;
     xwayland.current_output.sceneAddWindow(xwayland_window);
+    xwayland.current_output.sceneEnsureWindowInViewport(xwayland_window);
     owm.SERVER.seat.focusWindow(xwayland_window);
+
+    xwayland.mapped = true;
 }
 
 fn unmapCallback(listener: *wl.Listener(void)) void {
@@ -153,6 +157,8 @@ fn unmapCallback(listener: *wl.Listener(void)) void {
     xwayland.commit_listener.link.remove();
     xwayland_window.link.remove();
     xwayland.wlr_scene_tree.?.node.destroy();
+
+    xwayland.mapped = false;
 }
 
 fn commitCallback(listener: *wl.Listener(*wlr.Surface), wlr_surface: *wlr.Surface) void {
