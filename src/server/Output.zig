@@ -247,8 +247,8 @@ pub fn setModeAndPos(self: *Self, new_x: i32, new_y: i32, new_mode: Mode) Error!
 
 pub fn getCenterPosForWindow(self: *Self, window_width: c_int, window_height: c_int) owm.math.Vec2(i32) {
     const area = self.area;
-    const x: i32 = area.x + @divExact(area.width, 2) - @divExact(window_width, 2);
-    const y: i32 = area.y + @divExact(area.height, 2) - @divExact(window_height, 2);
+    const x: i32 = area.x + @divFloor(area.width, 2) - @divFloor(window_width, 2);
+    const y: i32 = area.y + @divFloor(area.height, 2) - @divFloor(window_height, 2);
     return .{ .x = x, .y = y };
 }
 
@@ -547,7 +547,7 @@ fn frameCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) v
         return;
     }
 
-    var now = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch @panic("CLOCK_MONOTONIC not supported");
+    var now = owm.time.timeSinceStart();
     scene_output.sendFrameDone(&now);
 }
 

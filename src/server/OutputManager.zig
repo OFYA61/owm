@@ -70,8 +70,8 @@ fn outputLayoutChangeListener(listener: *wl.Listener(*wlr.OutputLayout), _: *wlr
         // Make sure the cursor isn't outside of the outputs viewports by moving it to the center of an active output
         if (output.is_active) {
             owm.SERVER.seat.setCursorPos(
-                @as(f64, @floatFromInt(output.area.x + @divExact(output.area.width, 2))),
-                @as(f64, @floatFromInt(output.area.y + @divExact(output.area.height, 2))),
+                @as(f64, @floatFromInt(output.area.x + @divFloor(output.area.width, 2))),
+                @as(f64, @floatFromInt(output.area.y + @divFloor(output.area.height, 2))),
             );
             break;
         }
@@ -109,62 +109,68 @@ pub fn setupOutputArrangement(self: *Self) void {
 
     log.infof("OutputManager: Settings up output arrangement for outputs '{s}'", .{arrangement_id});
 
-    if (owm.config.output.getArrangement(arrangement_id)) |arrangement| {
-        defer arrangement.deinit();
-        log.infof("OutputManager: Output arrangement found for outputs '{s}', setting up displays according to it", .{arrangement_id});
-        for (outputs.items) |output| {
-            const display_settings = arrangement.value.map.get(output.id).?;
-
-            if (!display_settings.active) {
-                log.infof("OutputManager: Disabling output {s}", .{output.id});
-                output.disableOutput() catch |err| {
-                    log.errf("OutputManager: Failed to disable output {}", .{err});
-                };
-                continue;
-            }
-
-            log.infof(
-                "OutputManager: Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
-                .{
-                    output.id,
-                    display_settings.x,
-                    display_settings.y,
-                    display_settings.width,
-                    display_settings.height,
-                    display_settings.refresh,
-                },
-            );
-
-            output.setModeAndPos(
-                display_settings.x,
-                display_settings.y,
-                Output.Mode{
-                    .width = display_settings.width,
-                    .height = display_settings.height,
-                    .refresh = display_settings.refresh,
-                },
-            ) catch |err| {
-                log.errf("OutputManager: Failed to set mode and pos for output {s}: {}", .{ output.id, err });
-                continue;
-            };
+    var arrangement = owm.config.output.getArrangement(arrangement_id) catch |err| {
+        if (err != error.FileDoesNotExist) {
+            log.errf("OutputManager: Error determining the arrangement settings for id '{s}'", .{arrangement_id});
+            return;
         }
-    } else {
-        var arrangement = owm.config.output.Arrangement{};
-        defer arrangement.deinit(owm.alloc);
+        var arrangement: owm.config.output.Arrangement = .init(owm.alloc);
+        defer arrangement.deinit();
         for (outputs.items) |output| {
-            arrangement.map.put(
-                owm.alloc,
+            arrangement.put(
                 output.id,
-                owm.config.output.DisplayArrangementSettings{
+                owm.config.output.DisplaySettings{
                     .width = output.area.width,
                     .height = output.area.height,
-                    .refresh = output.getRefresh(),
                     .x = output.area.x,
                     .y = output.area.y,
-                    .active = output.wlr_output.enabled,
+                    .refresh = output.getRefresh(),
+                    .enabled = output.wlr_output.enabled,
                 },
             ) catch unreachable;
         }
         owm.config.output.storeArrangement(arrangement_id, arrangement);
+        return;
+    };
+
+    defer owm.config.output.freeArrangement(&arrangement);
+
+    log.infof("OutputManager: Output arrangement found for outputs '{s}', setting up displays according to it", .{arrangement_id});
+    for (outputs.items) |output| {
+        log.debugf("OutputManager: Setting display settings for output '{s}'", .{output.id});
+        const display_settings = arrangement.get(output.id).?;
+
+        if (!display_settings.enabled) {
+            log.infof("OutputManager: Disabling output {s}", .{output.id});
+            output.disableOutput() catch |err| {
+                log.errf("OutputManager: Failed to disable output {}", .{err});
+            };
+            continue;
+        }
+
+        log.infof(
+            "OutputManager: Setting output {s} to pos ({}, {}) mode {}x{} {}Hz",
+            .{
+                output.id,
+                display_settings.x,
+                display_settings.y,
+                display_settings.width,
+                display_settings.height,
+                display_settings.refresh,
+            },
+        );
+
+        output.setModeAndPos(
+            display_settings.x,
+            display_settings.y,
+            Output.Mode{
+                .width = display_settings.width,
+                .height = display_settings.height,
+                .refresh = display_settings.refresh,
+            },
+        ) catch |err| {
+            log.errf("OutputManager: Failed to set mode and pos for output {s}: {}", .{ output.id, err });
+            continue;
+        };
     }
 }

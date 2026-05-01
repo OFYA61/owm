@@ -4,6 +4,7 @@ const std = @import("std");
 const posix = std.posix;
 
 const wl = @import("wayland").server.wl;
+const ext = @import("wayland").server.ext;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 
@@ -83,6 +84,9 @@ pub fn init(self: *Self) anyerror!void {
     wlr_layer_shell_v1.events.new_surface.add(&self.new_layer_surface_listener);
 
     wlr_xwayland.events.new_surface.add(&self.xwayland_new_surface_listener);
+
+    owm.env.putVar("WAYLAND_DISPLAY", &self.wl_socket);
+    owm.env.putVar("DISPLAY", std.mem.span(self.wlr_xwayland.display_name));
 }
 
 pub fn deinit(self: *Self) void {
@@ -172,21 +176,15 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
 }
 
 fn spawnChild(self: *Self, command: [:0]const u8) anyerror!void {
-    var env_map = try std.process.getEnvMap(owm.c_alloc);
-    defer env_map.deinit();
-    try env_map.put("WAYLAND_DISPLAY", &self.wl_socket);
-    try env_map.put("DISPLAY", std.mem.span(self.wlr_xwayland.display_name));
-
+    _ = self;
     log.infof("Running command '{s}'", .{command});
-    var child = std.process.Child.init(
-        &[_][]const u8{ "/bin/sh", "-c", command },
-        owm.c_alloc,
-    );
-    child.stdin_behavior = .Ignore;
-    child.stdout_behavior = .Ignore;
-    child.stderr_behavior = .Ignore;
-    child.env_map = &env_map;
-    try child.spawn();
+    _ = try std.process.spawn(owm.getIo(), .{
+        .argv = &.{ "/bin/sh", "-c", command },
+        .environ_map = owm.env.getEnv(),
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
 }
 
 pub fn outputAtCursor(self: *Self) ?*Output {
