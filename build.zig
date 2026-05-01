@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) void {
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
     scanner.addSystemProtocol("stable/tablet/tablet-v2.xml");
     scanner.addSystemProtocol("staging/color-management/color-management-v1.xml");
+    scanner.addSystemProtocol("staging/ext-workspace/ext-workspace-v1.xml");
+
     scanner.addCustomProtocol(b.path("./protocols/wlr-layer-shell-unstable-v1.xml"));
 
     // Wayland protocols
@@ -22,6 +24,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("xdg_wm_base", 2);
     scanner.generate("zwp_tablet_manager_v2", 1);
     scanner.generate("wp_color_manager_v1", 2);
+    scanner.generate("ext_workspace_manager_v1", 1);
 
     // Unstable wayland protocols
     scanner.generate("zwlr_layer_shell_v1", 5);
@@ -41,33 +44,26 @@ pub fn build(b: *std.Build) void {
     wlroots.resolved_target = target;
     wlroots.linkSystemLibrary("wlroots-0.20", .{});
 
-    const logly = b.dependency("logly", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const owm_exe = b.addExecutable(.{
         .name = "owm",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
         .use_llvm = true,
         .use_lld = true,
     });
 
-    owm_exe.linkLibC();
-
     owm_exe.root_module.addImport("wayland", wayland);
     owm_exe.root_module.addImport("xkbcommon", xkbcommon);
     owm_exe.root_module.addImport("wlroots", wlroots);
     owm_exe.root_module.addImport("pixman", pixman);
-    owm_exe.root_module.addImport("logly", logly.module("logly"));
 
-    owm_exe.linkSystemLibrary("wayland-server");
-    owm_exe.linkSystemLibrary("xkbcommon");
-    owm_exe.linkSystemLibrary("pixman-1");
+    owm_exe.root_module.linkSystemLibrary("wayland-server", .{});
+    owm_exe.root_module.linkSystemLibrary("xkbcommon", .{});
+    owm_exe.root_module.linkSystemLibrary("pixman-1", .{});
 
     const owm_install = b.addInstallArtifact(
         owm_exe,
@@ -92,4 +88,17 @@ pub fn build(b: *std.Build) void {
     }
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const owm_unit_tests = b.addTest(.{
+        .name = "owm-test",
+        .root_module = owm_exe.root_module,
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    const test_cmd = b.addRunArtifact(owm_unit_tests);
+    if (b.args) |args| {
+        test_cmd.addArgs(args);
+    }
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&test_cmd.step);
 }

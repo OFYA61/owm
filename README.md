@@ -1,10 +1,11 @@
 ## Setup
 
-1. Install dependencies
+1. Install `zig` version `0.16`
+2. Install dependencies
 ```bash
 sudo pacman -S wayland wayland-protocols pixman libxkbcommon libinput
 ```
-2. Install wlroots `0.20`, see [the offical repository](https://gitlab.freedesktop.org/wlroots/wlroots/) on how to install it.
+3. Install wlroots `0.20`, see [the offical repository](https://gitlab.freedesktop.org/wlroots/wlroots/) on how to install it.
 
 ## Run
 
@@ -37,8 +38,20 @@ Runnig generates the default config files as they are requested with their defau
 Config can be found in `$HOME/.config/owm`.
 
 ### Dislpay arrangement
-For each display configuration, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
+
+For each display combination, a config file in `$HOME/.config/owm/output/` will get generated. The files name will be the serials of all the displays sorted in alphabetical orders
 concatinated with `:`. You can modify the position, resolution, and refresh rate. Needs restart to take affect.
+
+Example config
+```
+SERIAL1 = 1920x1080, 2560x0, 60, 1
+SERIAL2 = 2560x1440, 0x0, 144, 1
+SERIAL3 = 1920x1080, 0x0, 144, 0
+```
+
+```
+SERIAL = resolution, position, refresh rate, enabled
+```
 
 **TODO**: Write docs around display arrangement
 

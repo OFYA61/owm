@@ -69,30 +69,19 @@ pub const Keybind = struct {
         Command: [:0]const u8,
     };
 
-    pub fn fromConfigStr(raw_config_str: []const u8) error{ InvalidFormat, InvalidModifier }!Keybind {
-        var config_str: std.ArrayList(u8) = .empty;
+    pub fn fromConfigStr(raw_config_str: []const u8) utils.ParseError!Keybind {
+        var config_str = utils.removeWhiteSpaces(raw_config_str);
         defer config_str.deinit(owm.alloc);
 
-        for (raw_config_str) |c| {
-            switch (c) {
-                ' ', '\t', '\n', '\r' => continue,
-                else => config_str.append(owm.alloc, c) catch unreachable,
-            }
-        }
-
-        var keybind_tokenizer: utils.Tokenizer = .create(&config_str, ',');
+        var keybind_tokenizer: utils.Tokenizer = .create(config_str.items, ',');
 
         var modifiers: ModifierMask = .{};
         const modifier_token = keybind_tokenizer.next() orelse {
             log.err("Config: Invalid keybind config");
-            return error.InvalidFormat;
+            return utils.ParseError.InvalidFormat;
         };
         if (modifier_token.len > 0) {
-            var modifier_stream = std.ArrayList(u8).initCapacity(owm.alloc, modifier_token.len) catch unreachable;
-            defer modifier_stream.deinit(owm.alloc);
-            modifier_stream.appendSlice(owm.alloc, modifier_token) catch unreachable;
-
-            var modifier_tokenizer: utils.Tokenizer = .create(&modifier_stream, '_');
+            var modifier_tokenizer: utils.Tokenizer = .create(modifier_token, '_');
             while (modifier_tokenizer.next()) |token| {
                 if (std.mem.eql(u8, token, "Shift")) {
                     modifiers.shift = true;
@@ -102,25 +91,25 @@ pub const Keybind = struct {
                     modifiers.logo = true;
                 } else {
                     log.errf("Config: unknown modifier for keybind '{s}'\n", .{token});
-                    return error.InvalidModifier;
+                    return utils.ParseError.InvalidModifier;
                 }
             }
         }
 
         const key_token = keybind_tokenizer.next() orelse {
             log.err("Config: Invalid keybind config, no key code provided");
-            return error.InvalidFormat;
+            return utils.ParseError.InvalidFormat;
         };
         if (key_token.len == 0) {
             log.err("Config: Invalid keybind config, no key code provided");
-            return error.InvalidFormat;
+            return utils.ParseError.InvalidFormat;
         }
         const key_code = std.fmt.parseInt(u32, key_token, 10) catch {
             log.errf(
                 "Config: Invalid keybind config, key code value must be a 0+ number, but got {s}",
                 .{key_token},
             );
-            return error.InvalidFormat;
+            return utils.ParseError.InvalidFormat;
         };
 
         const action_type_token = keybind_tokenizer.next() orelse {
@@ -145,14 +134,14 @@ pub const Keybind = struct {
                         "Config: Invalid keybind config, SwitchWorkspace expects a positive integer non-zero, but got {s}",
                         .{action_param_token},
                     );
-                    return error.InvalidFormat;
+                    return utils.ParseError.InvalidFormat;
                 };
                 if (idx <= 0) {
                     log.errf(
                         "Config: Invalid keybind config, SwitchWorkspace expects a positive integer non-zero, but got {s}",
                         .{action_param_token},
                     );
-                    return error.InvalidFormat;
+                    return utils.ParseError.InvalidFormat;
                 }
                 action = .{ .SwitchWorkspace = idx };
             } else if (std.mem.eql(u8, action_type_token, "Command")) {
@@ -164,14 +153,14 @@ pub const Keybind = struct {
                         "Config: Invalid keybind config, MoveWindowToWorkspace expects a positive integer, but got {s}",
                         .{action_param_token},
                     );
-                    return error.InvalidFormat;
+                    return utils.ParseError.InvalidFormat;
                 };
                 if (idx <= 0) {
                     log.errf(
                         "Config: Invalid keybind config, MoveWindowToWorkspace expects a positive integer non-zero, but got {s}",
                         .{action_param_token},
                     );
-                    return error.InvalidFormat;
+                    return utils.ParseError.InvalidFormat;
                 }
                 action = .{ .MoveWindowToWorkspace = idx };
             } else {
@@ -190,14 +179,11 @@ pub const Keybind = struct {
 pub fn init() !void {
     KEYBINDS = .empty;
 
-    try utils.ensureConfigFileExists(default_config, keybind_file_path);
+    _ = try utils.ensureConfigFileExists(default_config, keybind_file_path);
     const config_raw = try utils.loadRaw(keybind_file_path);
     defer owm.alloc.free(config_raw);
 
-    var config_raw_stream = std.ArrayList(u8).initCapacity(owm.alloc, config_raw.len) catch unreachable;
-    defer config_raw_stream.deinit(owm.alloc);
-    config_raw_stream.appendSlice(owm.alloc, config_raw) catch unreachable;
-    var config_tokenizer: utils.Tokenizer = .create(&config_raw_stream, '\n');
+    var config_tokenizer: utils.Tokenizer = .create(config_raw, '\n');
 
     while (config_tokenizer.next()) |token| {
         if (token.len == 0) {
