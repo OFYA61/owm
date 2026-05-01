@@ -163,6 +163,9 @@ pub fn getArrangement(id: []const u8) (utils.ParseError || utils.FileError)!Arra
         arrangement.put(display_id_cpy, display_settings) catch unreachable;
     }
 
+    // TODO: improve checks so that we have a key value pair for each of the required displays that we get from `id`.
+    // The `id` will contain all the required serials concatenated by `:`
+
     return arrangement;
 }
 

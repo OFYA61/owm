@@ -88,4 +88,17 @@ pub fn build(b: *std.Build) void {
     }
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const owm_unit_tests = b.addTest(.{
+        .name = "owm-test",
+        .root_module = owm_exe.root_module,
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    const test_cmd = b.addRunArtifact(owm_unit_tests);
+    if (b.args) |args| {
+        test_cmd.addArgs(args);
+    }
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&test_cmd.step);
 }
