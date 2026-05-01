@@ -81,7 +81,3 @@ modifiers, keycode, action, action_args
     - [ ] Notifications (overlay layer)
     - [ ] Screen Lockers (overlay layer)
 - [ ] Custom rendering logic, cuz I want to
-
-## Known bugs
-
-- On certain `output + workspace + open window` combinations, when an output is disconnected and the layout changes, rearranging windows so that they're not outside of the viewport causes a hard crash. The call to set their nodes position fails.
