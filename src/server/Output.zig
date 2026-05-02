@@ -396,7 +396,7 @@ pub fn sceneCreateWorkspace(self: *Self) !void {
 
     // TODO: make the `workspace_handle` into it's own struct and stored on the heap. When we get to nuking workspaces, this'll
     // cause memory leakes courtasy of the `id` and `name` fields. It does have a destory event we can listen to, but it does
-    // NOT send the destoryed `wlr_ext_workspace_handle_v1` back, thus we need a heap allocated struct which wrapps this thing
+    // NOT send the destroyed `wlr_ext_workspace_handle_v1` back, thus we need a heap allocated struct which wrapps this thing
     // instead, yey.
     const handle = try owm.SERVER.ext_workspace_manager.wlr_ext_workspace_manager.createWorkspace(
         owm.alloc.dupeZ(u8, new_workspace_id) catch unreachable,
