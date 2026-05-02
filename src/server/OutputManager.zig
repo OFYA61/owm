@@ -41,6 +41,16 @@ pub inline fn getOutputBox(self: *Self, output: *Output) wlr.Box {
     return box;
 }
 
+pub fn findOutputByWorkspaceGroupHandle(self: *Self, group_handle: *wlr.ExtWorkspaceGroupHandleV1) ?*Output {
+    var iter = self.outputs.iterator(.forward);
+    while (iter.next()) |output| {
+        if (output.workspace_group_handle == group_handle) {
+            return output;
+        }
+    }
+    return null;
+}
+
 fn newOutputCallback(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
     const self: *Self = @fieldParentPtr("new_output_listener", listener);
 

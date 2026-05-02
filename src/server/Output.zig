@@ -18,10 +18,17 @@ const Window = owm.client.window.Window;
 
 const Workspace = struct {
     root: *wlr.SceneTree,
+    handle: *wlr.ExtWorkspaceHandleV1,
     windows: wl.list.Head(Window, .link) = undefined,
 
     inline fn setEnabled(self: *Workspace, enabled: bool) void {
         self.root.node.setEnabled(enabled);
+        self.handle.setActive(enabled);
+        if (enabled) {
+            if (self.windows.first()) |window| {
+                owm.SERVER.seat.focusWindow(window);
+            }
+        }
     }
 };
 
@@ -55,6 +62,8 @@ area: wlr.Box,
 work_area: wlr.Box,
 link: wl.list.Link = undefined,
 exclusive_zones: std.ArrayList(ExclusiveZone) = .empty,
+
+workspace_group_handle: *wlr.ExtWorkspaceGroupHandleV1,
 
 scene: struct {
     const Scene = @This();
@@ -150,6 +159,8 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         .height = wlr_output.height,
     };
 
+    const workspace_group_handle = try owm.SERVER.ext_workspace_manager.createGroup();
+    workspace_group_handle.outputEnter(wlr_output);
     const scene_root = try owm.SERVER.scene.root.createSceneTree();
     self.* = .{
         .id = id,
@@ -158,6 +169,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
         .work_area = area,
         .wlr_layout_output = layout_output,
         .wlr_scene_output = scene_output,
+        .workspace_group_handle = workspace_group_handle,
         .scene = .{
             .root = scene_root,
             .layers = .{
@@ -374,13 +386,35 @@ fn recalculateWorkArea(self: *Self) void {
 /// Creats and appends a workspace to the list of workspaces, disabled by default
 pub fn sceneCreateWorkspace(self: *Self) !void {
     var scene = &self.scene;
+
+    const root = try scene.root.createSceneTree();
+    errdefer root.node.destroy();
+
+    const new_workspace_number = scene.workspaces.items.len + 1;
+    const new_workspace_number_str = std.fmt.allocPrint(owm.alloc, "{}", .{new_workspace_number}) catch unreachable;
+    const new_workspace_id = std.fmt.allocPrint(owm.alloc, "{s} - {}", .{ self.id, new_workspace_number }) catch unreachable;
+
+    const handle = try owm.SERVER.ext_workspace_manager.wlr_ext_workspace_manager.createWorkspace(
+        owm.alloc.dupeZ(u8, new_workspace_id) catch unreachable,
+        .{},
+    );
+    handle.setGroup(self.workspace_group_handle);
+    handle.setName(
+        owm.alloc.dupeZ(u8, new_workspace_number_str) catch unreachable,
+    );
+
     try scene.workspaces.append(
         owm.alloc,
-        Workspace{ .root = try scene.root.createSceneTree() },
+        Workspace{
+            .root = root,
+            .handle = handle,
+        },
     );
+
     var new_workspace = &scene.workspaces.items[scene.workspaces.items.len - 1];
     new_workspace.windows.init();
     new_workspace.setEnabled(false);
+
     log.debugf("Output {s}: Created workspace {}", .{ self.id, scene.workspaces.items.len });
 }
 
@@ -393,6 +427,16 @@ pub fn sceneSwitchWorkspace(self: *Self, idx: usize) void {
     scene.current_workspace_idx = idx;
     self.getCurrentWorkspace().setEnabled(true);
     self.damageWhole();
+}
+
+pub fn sceneSwitchWorkspaceWithHandle(self: *Self, handle: *wlr.ExtWorkspaceHandleV1) void {
+    const scene = &self.scene;
+    for (scene.workspaces.items, 0..) |*workspace, idx| {
+        if (workspace.handle == handle) {
+            self.sceneSwitchWorkspace(idx);
+            return;
+        }
+    }
 }
 
 pub inline fn sceneGetCurrentRoot(self: *Self) *wlr.SceneTree {

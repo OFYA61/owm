@@ -11,6 +11,7 @@ const xkb = @import("xkbcommon");
 const owm = @import("root").owm;
 const log = owm.log;
 
+const ExtWorkspaceManager = @import("ExtWorkspaceManager.zig");
 const LayerShell = @import("LayerShell.zig");
 const Output = @import("Output.zig");
 const OutputManager = @import("OutputManager.zig");
@@ -26,6 +27,7 @@ wlr_backend: *wlr.Backend,
 wlr_allocator: *wlr.Allocator,
 wlr_renderer: *wlr.Renderer,
 
+ext_workspace_manager: ExtWorkspaceManager,
 layer_shell: LayerShell,
 output_manager: OutputManager,
 scene: Scene,
@@ -47,6 +49,7 @@ pub fn init(self: *Self) anyerror!void {
     _ = try wlr.Subcompositor.create(wl_server); // Allows clients to assign role to subsurfaces
     _ = try wlr.DataDeviceManager.create(wl_server); // Handles clipboard
 
+    const ext_workspace_manager = try ExtWorkspaceManager.create(wl_server);
     const layer_shell = try LayerShell.create(wl_server);
     const output_manager = try OutputManager.create(wl_server);
     const scene = try Scene.create(output_manager.wlr_output_layout);
@@ -59,6 +62,7 @@ pub fn init(self: *Self) anyerror!void {
         .wlr_backend = wlr_backend,
         .wlr_renderer = wlr_renderer,
         .wlr_allocator = wlr_allocator,
+        .ext_workspace_manager = ext_workspace_manager,
         .layer_shell = layer_shell,
         .output_manager = output_manager,
         .scene = scene,
@@ -73,6 +77,7 @@ pub fn init(self: *Self) anyerror!void {
 
     try self.wlr_renderer.initServer(wl_server);
 
+    self.ext_workspace_manager.init();
     self.layer_shell.init();
     self.output_manager.init();
     try self.seat.init(self.wlr_backend, self.output_manager.wlr_output_layout);
@@ -87,6 +92,7 @@ pub fn deinit(self: *Self) void {
     log.debug("Server Destorying clients");
     self.wl_server.destroyClients();
 
+    self.ext_workspace_manager.deinit();
     self.layer_shell.deinit();
     self.output_manager.deinit();
     self.seat.deinit();
