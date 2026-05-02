@@ -21,10 +21,8 @@ pub fn runStartupCommands() void {
         return;
     };
     defer owm.alloc.free(startup_config_raw);
-    log.debugf("Config: startup commands '{s}'", .{startup_config_raw});
 
     var startup_config_tokenizer: utils.Tokenizer = .create(startup_config_raw, '\n');
-
     while (startup_config_tokenizer.next()) |startup_command_token| {
         if (startup_command_token.len == 0) {
             continue;
