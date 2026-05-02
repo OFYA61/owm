@@ -68,6 +68,7 @@ modifiers, keycode, action, action_args
 ## TODO
 
 - [x] Keybindings
+- [ ] Startup commands (e.g. start up status bar)
 - [ ] Workspaces
     - [x] Create worksapces
     - [x] Move windows between workspaces
