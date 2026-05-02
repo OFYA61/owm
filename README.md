@@ -73,7 +73,7 @@ The startup commands can be set in the `$HOME/.config/owm/startup/commands` file
 
 - [x] Keybindings
 - [x] Startup commands
-- [ ] Workspaces
+- [x] Workspaces
     - [x] Create worksapces
     - [x] Move windows between workspaces
     - [x] Cleanup workspaces on output destroy
