@@ -14,13 +14,9 @@ pub fn init() void {
 }
 
 pub fn spawnProcess(command: [:0]const u8) void {
-    log.infof("Process: Spawning process '{s}'", .{command});
-    spawnProcessWithArgs(&.{ "/bin/sh", "-c", command });
-}
-
-pub fn spawnProcessWithArgs(argv: []const []const u8) void {
+    log.infof("Process: Running command: {s}", .{command});
     _ = std.process.spawn(owm.getIo(), .{
-        .argv = argv,
+        .argv = &.{ "/bin/sh", "-c", command },
         .environ_map = owm.env.getEnv(),
         .stdin = .ignore,
         .stdout = .ignore,
