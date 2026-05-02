@@ -5,6 +5,7 @@ const std = @import("std");
 pub const env = @import("env.zig");
 pub const log = @import("log.zig");
 pub const math = @import("math.zig");
+pub const process = @import("process.zig");
 pub const time = @import("time.zig");
 
 pub const client = @import("client/client.zig");
@@ -22,6 +23,8 @@ pub var SERVER: server.Server = undefined;
 
 pub fn init(i: *const std.process.Init) anyerror!void {
     io = i.io;
+
+    process.init();
 
     try env.init(i);
     try log.init();

@@ -115,6 +115,7 @@ pub fn run(self: *Self) anyerror!void {
         },
     );
     try self.wlr_backend.start();
+    owm.config.startup.runStartupCommands();
     self.wl_server.run();
 }
 
@@ -150,9 +151,7 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
                 }
             },
             .Command => |command| {
-                self.spawnChild(command) catch {
-                    log.errf("Failed to run command {s}", .{command});
-                };
+                owm.process.spawnProcess(command);
             },
             .ToggleMaximize => {
                 if (self.seat.focused_window) |window| {
@@ -163,18 +162,6 @@ pub fn handleKeybind(self: *Self, modifiers: wlr.Keyboard.ModifierMask, key_code
         return true;
     }
     return false;
-}
-
-fn spawnChild(self: *Self, command: [:0]const u8) anyerror!void {
-    _ = self;
-    log.infof("Running command '{s}'", .{command});
-    _ = try std.process.spawn(owm.getIo(), .{
-        .argv = &.{ "/bin/sh", "-c", command },
-        .environ_map = owm.env.getEnv(),
-        .stdin = .ignore,
-        .stdout = .ignore,
-        .stderr = .ignore,
-    });
 }
 
 pub fn outputAtCursor(self: *Self) ?*Output {

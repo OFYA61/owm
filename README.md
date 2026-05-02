@@ -65,10 +65,14 @@ modifiers, keycode, action, action_args
 
 **TODO**: Write docs around keybinds.
 
+### Startup commands
+
+The startup commands can be set in the `$HOME/.config/owm/startup/commands` file. Each line is a separate shell command that can be run. Currently chaining commands with `&&` doesn't work.
+
 ## TODO
 
 - [x] Keybindings
-- [ ] Startup commands (e.g. start up status bar)
+- [x] Startup commands
 - [ ] Workspaces
     - [x] Create worksapces
     - [x] Move windows between workspaces
