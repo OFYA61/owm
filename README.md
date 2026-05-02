@@ -78,7 +78,7 @@ The startup commands can be set in the `$HOME/.config/owm/startup/commands` file
     - [x] Move windows between workspaces
     - [x] Cleanup workspaces on output destroy
     - [x] Move destroyed outputs windows to another outputs workspaces
-    - [ ] Implement `ext-workspace-v1` protocol
+    - [x] Implement `ext-workspace-v1` protocol
 - [ ] Finish implementing `wlr-layer-shell` protocol
     - [ ] Handle status bar positioning on all 4 sides
     - [ ] Launchers and App Menus
