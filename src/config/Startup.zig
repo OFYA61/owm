@@ -27,16 +27,10 @@ pub fn runStartupCommands() void {
         if (startup_command_token.len == 0) {
             continue;
         }
-        log.infof("Config: Parsing and running startup command: {s}", .{startup_command_token});
+        log.infof("Config: Running startup command: {s}", .{startup_command_token});
 
-        var startup_command_tokenizer: utils.Tokenizer = .create(startup_command_token, ' ');
-        var argv: std.ArrayList([]const u8) = .empty;
-        defer argv.deinit(owm.alloc);
-        argv.append(owm.alloc, "/bin/sh") catch unreachable;
-        argv.append(owm.alloc, "-c") catch unreachable;
-        while (startup_command_tokenizer.next()) |arg| {
-            argv.append(owm.alloc, arg) catch unreachable;
-        }
-        owm.process.spawnProcessWithArgs(argv.items);
+        const startup_command = owm.alloc.dupeSentinel(u8, startup_command_token, 0) catch unreachable;
+        defer owm.alloc.free(startup_command);
+        owm.process.spawnProcess(startup_command);
     }
 }
