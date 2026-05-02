@@ -67,7 +67,7 @@ modifiers, keycode, action, action_args
 
 ### Startup commands
 
-The startup commands can be set in the `$HOME/.config/owm/startup/commands` file. Each line is a separate shell command that can be run. Currently chaining commands with `&&` doesn't work.
+The startup commands can be set in the `$HOME/.config/owm/startup/commands` file. Each line is a separate shell command that can be run.
 
 ## TODO
 
