@@ -30,6 +30,14 @@ wlr_scene: *wlr.Scene,
 wlr_scene_output_layout: *wlr.SceneOutputLayout,
 
 root: *wlr.SceneTree,
+/// Root of the output scene trees
+output_root: *wlr.SceneTree,
+/// Root of the global layers displayed on all outputs
+layers_root: *wlr.SceneTree,
+/// Layers containing surfaces not owned by certain outputs
+global_layers: struct {
+    dragging: *wlr.SceneTree,
+},
 orphaned_windows: struct {
     root: *wlr.SceneTree,
     windows: wl.list.Head(Window, .link) = undefined,
@@ -61,11 +69,21 @@ orphaned_windows: struct {
 pub fn create(wlr_output_layout: *wlr.OutputLayout) !Self {
     const wlr_scene = try wlr.Scene.create();
     const wlr_scene_output_layout = try wlr_scene.attachOutputLayout(wlr_output_layout);
+
     const root = try wlr_scene.tree.createSceneTree();
+    const output_root = try root.createSceneTree();
+    const global_layers_root = try root.createSceneTree();
+    global_layers_root.node.raiseToTop();
+
     return Self{
         .wlr_scene = wlr_scene,
         .wlr_scene_output_layout = wlr_scene_output_layout,
         .root = root,
+        .output_root = output_root,
+        .layers_root = global_layers_root,
+        .global_layers = .{
+            .dragging = try global_layers_root.createSceneTree(),
+        },
         .orphaned_windows = .{
             .root = try root.createSceneTree(),
         },

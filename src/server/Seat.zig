@@ -122,6 +122,7 @@ pub fn requestMove(self: *Self, window: *Window) void {
     const window_pos = window.getPos();
     self.grab_x = self.wlr_cursor.x - @as(f64, @floatFromInt(window_pos.x));
     self.grab_y = self.wlr_cursor.y - @as(f64, @floatFromInt(window_pos.y));
+    window.setSceneTreeParent(owm.SERVER.scene.global_layers.dragging);
 }
 
 pub fn requestResize(self: *Self, window: *Window, edges: wlr.Edges) void {

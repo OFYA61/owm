@@ -161,7 +161,7 @@ pub fn create(wlr_output: *wlr.Output) Error!*Self {
 
     const workspace_group_handle = try owm.SERVER.ext_workspace_manager.createGroup();
     workspace_group_handle.outputEnter(wlr_output);
-    const scene_root = try owm.SERVER.scene.root.createSceneTree();
+    const scene_root = try owm.SERVER.scene.output_root.createSceneTree();
     self.* = .{
         .id = id,
         .wlr_output = wlr_output,
@@ -289,44 +289,44 @@ pub fn removeExclusiveZoneByOwner(self: *Self, owner: *owm.client.LayerSurface) 
         }
     }
 
-    if (index) |i| {
-        _ = self.exclusive_zones.orderedRemove(i);
-        self.recalculateWorkArea();
+    if (index == null) return;
 
-        // Rearrange the position of the owners of exclusive zones
-        var top: c_int = 0;
-        var bottom: c_int = 0;
-        var left: c_int = 0;
-        var right: c_int = 0;
-        for (self.exclusive_zones.items) |zone| {
-            const size: c_int = @intCast(zone.size);
-            var new_x: c_int = undefined;
-            var new_y: c_int = undefined;
+    _ = self.exclusive_zones.orderedRemove(index.?);
+    self.recalculateWorkArea();
 
-            switch (zone.type) {
-                .Top => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + top;
-                    top += size;
-                },
-                .Bottom => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + self.area.height - bottom;
-                    bottom += size;
-                },
-                .Left => {
-                    new_x = self.area.x + left;
-                    new_y = self.area.y + top;
-                    left += size;
-                },
-                .Right => {
-                    new_x = self.area.x + self.area.width - right;
-                    new_y = self.area.y + top;
-                    right += size;
-                },
-            }
-            zone.owner.setPos(new_x, new_y);
+    // Rearrange the position of the owners of exclusive zones
+    var top: c_int = 0;
+    var bottom: c_int = 0;
+    var left: c_int = 0;
+    var right: c_int = 0;
+    for (self.exclusive_zones.items) |zone| {
+        const size: c_int = @intCast(zone.size);
+        var new_x: c_int = undefined;
+        var new_y: c_int = undefined;
+
+        switch (zone.type) {
+            .Top => {
+                new_x = self.area.x + left;
+                new_y = self.area.y + top;
+                top += size;
+            },
+            .Bottom => {
+                new_x = self.area.x + left;
+                new_y = self.area.y + self.area.height - bottom;
+                bottom += size;
+            },
+            .Left => {
+                new_x = self.area.x + left;
+                new_y = self.area.y + top;
+                left += size;
+            },
+            .Right => {
+                new_x = self.area.x + self.area.width - right;
+                new_y = self.area.y + top;
+                right += size;
+            },
         }
+        zone.owner.setPos(new_x, new_y);
     }
 }
 
