@@ -85,4 +85,5 @@ The startup commands can be set in the `$HOME/.config/owm/startup/commands` file
     - [ ] Wallpapers (background layer)
     - [ ] Notifications (overlay layer)
     - [ ] Screen Lockers (overlay layer)
+- [ ] Finish implementing Xwayland
 - [ ] Custom rendering logic, cuz I want to
